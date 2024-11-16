@@ -131,7 +131,7 @@ def make_phi_theta(xyz,projax,center=None):
     #phi_new = np.arctan2(y_new, x_new) + np.pi
     ##phi_new = np.arccos(x_new)
     theta_new = np.arccos(x_new/r_new)
-    phi_new = np.arctan2(z_new,y_new)
+    phi_new = np.arctan2(z_new,y_new) + np.pi
     xyz_new = np.stack([x_new,y_new,z_new])
     return xyz_new, phi_new, theta_new
 
