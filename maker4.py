@@ -2,10 +2,10 @@
 import yt
 from starter2 import *
 import pdb
-import projector.s2p as s2p
+import projector.s3p as s3p
 import projector.proj as proj
 import healpy as hp
-reload(s2p)
+reload(s3p)
 reload(proj)
 
 if 0:
@@ -23,7 +23,7 @@ if 0:
     proj_axis=nar([1.,0,0])
 
     molplot=True
-    image=s2p.project(cube,xyz,dxyz,xyz_center,proj_axis,molplot=molplot, NSIDE=128)
+    image=s3p.project(cube,xyz,dxyz,xyz_center,proj_axis,molplot=molplot, NSIDE=128)
 
     if 0:
         plt.clf()
@@ -43,7 +43,7 @@ if 1:
     proj_center = cube_center-nar([1e-5,0,0])
     #proj_center = nar([xyz[0].min()-1, cube_center[1],cube_center[2]])
     proj_axis = nar([1.,0.,0])
-    image, counts=s2p.project(cube,xyz,dxyz,proj_center,proj_axis,molplot=molplot, NSIDE=16,exclude=0)
+    image, counts=s3p.project(cube,xyz,dxyz,proj_center,proj_axis,molplot=molplot, NSIDE=16,exclude=0)
 
 
     plt.clf()
