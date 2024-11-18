@@ -8,8 +8,9 @@ import healpy as hp
 reload(s3p)
 reload(proj)
 
-if 0:
+if 1:
     #all sky
+    #GOOD TEST.
     cube, xyz, dxyz = proj.make_cube_full(8, stick_or_sphere=0)
     cube += 0.01*cube.mean()
     cube = np.ones_like(cube)
@@ -22,33 +23,43 @@ if 0:
     #xyz -= 0.99*xyz_center #not exactly at zero.
     proj_axis=nar([1.,0,0])
 
-    molplot=True
-    image=s3p.project(cube,xyz,dxyz,xyz_center,proj_axis,molplot=molplot, NSIDE=128)
+    molplot=False
+    image, counts=s3p.project(cube,xyz,dxyz,xyz_center,proj_axis,molplot=molplot, NSIDE=NSIDE, exclude=1)
 
-    if 0:
+    if 1:
         plt.clf()
-        hp.mollview(np.log(image), title="Two Sticks")
+        #hp.mollview(np.log(image), title="ones")
+        #hp.mollview(image, title="ones")
+        image[image==0]=np.nan
+        hp.cartview(image, title="ones", min = image[image>0].min(), cmap='Reds')
         prefix='%s/sky'%plot_dir
         nplots = len(glob.glob(prefix+"*"))
         plt.savefig(prefix+"%03d"%nplots)
+    if 1:
+        plt.clf()
+        hp.cartview(counts, title="counts")
+        prefix='%s/counts'%plot_dir
+        nplots = len(glob.glob(prefix+"*"))
+        plt.savefig(prefix+"%03d"%nplots)
 
-if 1:
-    #horse around
-    cube, xyz, dxyz = proj.make_cube_full(8, stick_or_sphere=0)
+if 0:
+    #one cube
+    cube, xyz, dxyz = proj.make_cube_full(1, stick_or_sphere=0)
     #cube += 0.01*cube.mean()
     cube = np.ones_like(cube)
     molplot=False
+    moreplots=False
     cube_center = xyz.mean(axis=1)
 
-    proj_center = cube_center-nar([1e-5,0,0])
+    proj_center = cube_center-nar([1.,0,0])
     #proj_center = nar([xyz[0].min()-1, cube_center[1],cube_center[2]])
-    proj_axis = nar([1.,0.,0])
-    image, counts=s3p.project(cube,xyz,dxyz,proj_center,proj_axis,molplot=molplot, NSIDE=16,exclude=0)
+    proj_axis = nar([0.75,0.,-1.])
+    image, counts=s3p.project(cube,xyz,dxyz,proj_center,proj_axis,molplot=molplot, NSIDE=16,exclude=0, moreplots=moreplots)
 
 
     plt.clf()
-    image[image==0]=np.nan
-    hp.mollview(image, title="Ones",badcolor='w', bgcolor=[0.5]*3,norm='log')
+    #image[image==0]=np.nan
+    hp.mollview(image, title="Ones",badcolor='w', bgcolor=[0.5]*3)
     prefix='%s/image'%plot_dir
     nplots = len(glob.glob(prefix+"*"))
     plt.savefig(prefix+"%03d"%nplots)
@@ -59,39 +70,82 @@ if 1:
     plt.savefig(prefix+"%03d"%nplots)
 
 if 0:
+    #one cube, rotate
+    #GOOD TEST.
+    cube, xyz, dxyz = proj.make_cube_full(1, stick_or_sphere=0)
+    #cube += 0.01*cube.mean()
+    cube = np.ones_like(cube)
+    molplot=False
+    moreplots=False
+    NSIDE=16
+    cube_center = xyz.mean(axis=1)
+
+    proj_center = cube_center-nar([-1,0,0])
+    #proj_center = nar([xyz[0].min()-1, cube_center[1],cube_center[2]])
+    for npsi,psi in enumerate(np.arange(-np.pi, 1.5*np.pi, 2*np.pi/20)):
+        #if npsi not in [25]:
+        #    continue
+        proj_axis = nar([np.cos(psi),np.sin(psi),0])
+        image, counts=s3p.project(cube,xyz,dxyz,proj_center,proj_axis,molplot=molplot, NSIDE=NSIDE,exclude=0, moreplots=moreplots)
+
+        plt.clf()
+        #image[image==0]=np.nan
+        #hp.mollview(image, title="Ones",badcolor='w', bgcolor=[0.5]*3,norm='log')
+        hp.mollview(image, title="Ones",badcolor='w', bgcolor=[0.5]*3)
+        #hp.mollview(np.log(image), title="Ones",badcolor='w', bgcolor=[0.5]*3)
+        prefix='%s/image'%plot_dir
+        nplots = len(glob.glob(prefix+"*"))
+        plt.savefig(prefix+"%03d"%nplots)
+        plt.clf()
+        hp.mollview(counts, title="counts")
+        prefix='%s/counts'%plot_dir
+        nplots = len(glob.glob(prefix+"*"))
+        plt.savefig(prefix+"%03d"%nplots)
+        plt.close('all')
+
+if 0:
     #strafe the camera around the zone
-    cube, xyz, dxyz = proj.make_cube_full(8, stick_or_sphere=0)
+    cube, xyz, dxyz = proj.make_cube_full(1, stick_or_sphere=0)
     cube += 0.01*cube.min()
     cube = np.ones_like(cube)
     molplot=False
     theta = np.linspace(np.pi/7,np.pi*5/6,10)-np.pi/2
     phi   = np.linspace(-np.pi,np.pi,10)
     #theta = theta[9:10] #broken
-    theta = theta[0:1]
-    phi = phi[0:1]
+    theta = theta
+    phi = [np.pi]
     cube_center = xyz.mean(axis=1)
     cube_center.shape=cube_center.size,1
     xyz -= cube_center
 
-    r=0.1
+    r=2
     for nph,ph in enumerate(phi):
         for nth,th in enumerate(theta):
             print("Nth, Nph",nph,nth)
             x=r*np.sin(th)*np.cos(ph)
             y=r*np.sin(th)*np.sin(ph)
+            x=0
+            y=0
             z=r*np.cos(th)
             proj_center=nar([x,y,z])
             dcenter = proj_center-cube_center.flatten()
-            proj_axis = -dcenter/(dcenter**2).sum()
+            #proj_axis = -dcenter/(dcenter**2).sum()
+            proj_axis = nar([1.,0.,0.])
             bucket={'theta':th,'phi':ph}
 
-            image=s2p.project(cube,xyz,dxyz,proj_center,proj_axis, bucket=bucket,molplot=molplot, NSIDE=128)
+            image, counts=s3p.project(cube,xyz,dxyz,proj_center,proj_axis,molplot=molplot, NSIDE=16)
 
             plt.clf()
             hp.mollview(np.log(image), title="Two Sticks")
             prefix='%s/proj_sticks'%plot_dir
             nplots = len(glob.glob(prefix+"*"))
             plt.savefig(prefix+"%03d"%nplots)
+            plt.clf()
+            hp.mollview(counts, title="counts")
+            prefix='%s/counts'%plot_dir
+            nplots = len(glob.glob(prefix+"*"))
+            plt.savefig(prefix+"%03d"%nplots)
+            plt.close('all')
 
 
 if 0:
