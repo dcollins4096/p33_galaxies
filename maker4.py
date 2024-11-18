@@ -15,7 +15,7 @@ if 1:
     cube += 0.01*cube.mean()
     cube = np.ones_like(cube)
     Nz = cube.size
-    NSIDE = 4
+    NSIDE = 128
     NPIX = hp.nside2npix(NSIDE)
     image = np.arange(NPIX)
     xyz_center = xyz.mean(axis=1)
@@ -31,7 +31,7 @@ if 1:
         #hp.mollview(np.log(image), title="ones")
         #hp.mollview(image, title="ones")
         image[image==0]=np.nan
-        hp.cartview(image, title="ones", min = image[image>0].min(), cmap='Reds')
+        hp.cartview(image, title="ones", min = image[image>0].min(), cmap='Reds', norm='log')
         prefix='%s/sky'%plot_dir
         nplots = len(glob.glob(prefix+"*"))
         plt.savefig(prefix+"%03d"%nplots)
