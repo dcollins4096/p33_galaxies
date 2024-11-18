@@ -15,6 +15,8 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
 
     
     verbose=False
+    #shift center.
+    #mask out closes zones
     proj_center.shape=3,1
     xyz= xyz - proj_center
     rrr = np.sqrt((xyz**2).sum(axis=0))
@@ -25,16 +27,15 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
     dxyz=dxyz[:,mask]
     Nz = cube.size
 
-    #pdb.set_trace()
-
-
-    #make the final map
-
+    #create destination map
     NPIX = hp.nside2npix(NSIDE)
     final_map = np.zeros(NPIX)
     count_map = np.zeros(NPIX)
     
 
+    #
+    # Get corners, project
+    #
     #this shift puts them in an order that makes sense to draw lines
     shifter = np.array([[[-0.5, -0.5, +0.5, +0.5,  0.5, +0.5, -0.5, -0.5]],
                         [[-0.5, -0.5, -0.5, -0.5,  0.5, +0.5, +0.5, +0.5]],
@@ -43,10 +44,6 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
     dxyz.shape = 3,Nz,1
     xyz.shape = 3,Nz,1
 
-    #get the corners of each zone.
-    #Get projected theta and phi for each corner.
-    #Get the 6 furthest from the center of projection
-    #sort them in a clockwise fashion.
     if verbose: print('corners')
     corners = xyz+shifter*dxyz
 
@@ -75,6 +72,16 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
     #cor_p = proj.rotate(corners, proj_axis)
     #corners_oblique, phi_oblique, theta_oblique = proj.obliqueproj(xyz_p, cor_p)
     corners_persp,phi_persp,theta_persp=proj.make_phi_theta(corners, proj_axis)
+    if 1:
+        phi_min = phi_persp.min(axis=1)
+        phi_max = phi_persp.max(axis=1)
+        dphi = phi_max-phi_min
+        the_seam = dphi > np.pi
+        shift = the_seam.astype('float')
+        shift.shape = shift.size,1
+        shift = (shift * (phi_persp<np.pi)) * 2*np.pi
+        phi_persp = phi_persp + shift
+
     if 1:
         xyz_p.shape = 3,Nz
         phi_cen=phi_persp.mean(axis=1)
@@ -124,13 +131,11 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
         #the polygon comes out closed.
         edge_theta = np.array(edge_theta)[:-1]
         edge_phi = np.array(edge_phi)[:-1]
-        print(edge_phi)
 
 
         #healpy can't deal if there are colinear points.
         #Compute the area for every set of three points.  
         #If there are colinear points, reject the middle one.
-        #moreplots=True
         if 0:
             ntheta=len(edge_theta)
             arrr=np.zeros(ntheta)
@@ -172,6 +177,7 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
             polyz = np.cos(edge_theta)
             poly = np.stack([polyx,polyy,polyz]).T
         if 1:
+
             this_cen_theta= theta_cen[izone]
             this_cen_phi= phi_cen[izone]
             center_x = np.sin(this_cen_theta)*np.cos(this_cen_phi)
@@ -179,12 +185,16 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
             center_z = np.cos(this_cen_theta)
             center = np.stack([center_x,center_y,center_z])
 
+        if molplot:
+            hp.projscatter( this_cen_theta, this_cen_phi, c='r')
+            hp.projscatter(edge_theta, edge_phi, c='orange')
+
 
 
         #check for degenerate corners.  
         #for some reason I'm still getting a degenerate corner when I don't think I should.
         #https://healpix.sourceforge.io/html/Healpix_cxx/healpix__base_8cc_source.html line 1000
-        if 1:
+        if 0:
             degenerate=False
             for i in np.arange(poly.shape[0])-2:
                 normal = np.cross(poly[i], poly[i+1])
@@ -201,7 +211,7 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
         zone_column_density=-1e6
         try:
             #my_pix = hp.query_polygon(NSIDE,poly, inclusive=True)
-            my_pix = hp.query_disc(nside=NSIDE,vec=center,radius=circle_radius[izone])
+            my_pix = hp.query_disc(nside=NSIDE,vec=center,radius=circle_radius[izone], inclusive=True)
             #we'll also need this.  Can be streamlined.
             zone_poly = np.stack([edge_theta,edge_phi])
             q = Polygon(zone_poly.T)
@@ -210,7 +220,6 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
         except:
             if molplot:
                 hp.projscatter(edge_theta,edge_phi, c='r')
-            moreplots=True
             pdb.set_trace()
             print("MISSED A BAD CORNER")
 
@@ -268,7 +277,6 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
                 nplot = len(glob.glob(prefix+"*"))
                 fig.savefig(prefix+"%03d"%nplot)
             plt.close(fig)
-            moreplots=False
 
 
         if molplot and False:
@@ -285,6 +293,9 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
             ######yes this works
             xyz = hp.boundaries(NSIDE, ipix, step=1)
             theta, phi = hp.vec2ang(xyz.T)
+            dphi = phi.max()-phi.min()
+            #shift
+            phi += ((dphi > np.pi/2)+the_seam[izone])*(phi < np.pi/2)*2*np.pi
 
             ray_poly = np.stack([theta,phi])
             p = Polygon(ray_poly.T)
@@ -294,6 +305,11 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
             #the final quantity = q*V/A*intersection/r^2
             net_light=area*zone_column_density
             final_map[ipix] += net_light
+            #final_map[ipix] += area
+            #final_map[ipix] = max(final_map[ipix],p.area)
+            #final_map[ipix] = max(final_map[ipix],q.area)
+            #final_map[ipix] += q.area
+            #final_map[ipix] = max( final_map[ipix], area)
             count_map[ipix] += 1
             #final_map[ipix] = 1
 
@@ -305,17 +321,25 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
 
                 hp.projscatter(theta,phi,c='k')
 
-            if moreplots:
+            if moreplots or ipix == 0:
+                print(izone)
                 fig,ax=plt.subplots(1,1)
                 ax.plot(*q.exterior.xy)
                 ax.plot(*p.exterior.xy)
-                ax.plot(*intersection.exterior.xy)
+                if hasattr(intersection, 'exterior'):
+                    ax.plot(*intersection.exterior.xy)
+                    ax.set(title="%d %0.2e"%(ipix,intersection.area))
+                else:
+                    ax.set(title='empty')
+                ax.set(xlim=[-np.pi,2*np.pi], ylim=[-np.pi,3*np.pi])
+                ax.plot([0,0,np.pi,np.pi,0],[0,2*np.pi,2*np.pi,0,0])
                 #ax.plot(theta,phi)
                 ##ax.plot(edge_theta,edge_phi)
                 #pdb.set_trace()
                 prefix = '%s/intersector_'%plot_dir
                 nplot = len(glob.glob(prefix+"*"))
                 fig.savefig(prefix+"%03d"%nplot)
+                plt.close(fig)
 
             #if I decide to roll my own:
             #2.) InZone
@@ -348,5 +372,6 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
         prefix='%s/mmage'%plot_dir
         nplots = len(glob.glob(prefix+"*"))
         plt.savefig(prefix+"%03d"%nplots)
+    #final_map[1]=0
     return final_map, count_map
         
