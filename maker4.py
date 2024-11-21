@@ -11,27 +11,38 @@ reload(proj)
 if 1:
     #all sky
     #GOOD TEST.
-    cube, xyz, dxyz = proj.make_cube_full(8, stick_or_sphere=0)
-    cube += 0.01*cube.mean()
+    cube, xyz, dxyz = proj.make_cube_full(9, stick_or_sphere=0)
     cube = np.ones_like(cube)
     Nz = cube.size
-    NSIDE = 128
+    NSIDE = 4
     NPIX = hp.nside2npix(NSIDE)
     image = np.arange(NPIX)
     xyz_center = xyz.mean(axis=1)
-    #xyz_center.shape=xyz_center.size,1
-    #xyz -= 0.99*xyz_center #not exactly at zero.
     proj_axis=nar([1.,0,0])
+    #best to avoid being exactly on the zone boundary
+    proj_center=xyz_center+1e-6
+    #exclude N pixels from the center.
+    #Best to skip some, huge pixels make the algorithm sad.
+    exclude=2
 
+    #these make everything slow.
     molplot=False
-    image, counts=s3p.project(cube,xyz,dxyz,xyz_center,proj_axis,molplot=molplot, NSIDE=NSIDE, exclude=1)
+    moreplot=False
+    if 'last_image' not in dir():
+        last_image=None
+    image, counts=s3p.project(cube,xyz,dxyz,proj_center,proj_axis,molplot=molplot, NSIDE=NSIDE, exclude=exclude, moreplots=moreplots)#,last_image=last_image)#,cartplot=cartplot, mcartplot=mcartplot)
 
     if 1:
         plt.clf()
-        #hp.mollview(np.log(image), title="ones")
-        #hp.mollview(image, title="ones")
+        #really make the bad pixels bad.
         image[image==0]=np.nan
-        hp.cartview(image, title="ones", min = image[image>0].min(), cmap='Reds', norm='log')
+        hp.mollview(image, title="ones", min = image[image>0].min(), cmap='Reds', norm='log')
+        if NSIDE < 8 and False:
+            #print the pixel number, for debugging.
+            for ipix in np.arange(image.size)[:30]:
+                theta,phi = hp.pix2ang(NSIDE,ipix)
+                #hp.projscatter(theta,phi)
+                hp.projtext(theta,phi,"%d"%ipix)
         prefix='%s/sky'%plot_dir
         nplots = len(glob.glob(prefix+"*"))
         plt.savefig(prefix+"%03d"%nplots)
