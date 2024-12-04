@@ -133,7 +133,7 @@ def make_phi_theta(xyz,projax,center=None):
     theta_new = np.arccos(x_new/r_new)
     phi_new = np.arctan2(z_new,y_new) + np.pi
     xyz_new = np.stack([x_new,y_new,z_new])
-    return xyz_new, phi_new, theta_new
+    return xyz_new, phi_new, theta_new, x_p
 
 def rotate(xyz,projax,center=None):
     if center is not None:
@@ -156,6 +156,34 @@ def rotate(xyz,projax,center=None):
     r_new = np.sqrt(x_new**2+y_new**2+z_new**2)
     xyz_new = np.stack([x_new,y_new,z_new])
     return xyz_new
+
+def get_pole_axis(faces,x_hat, corners, max_r):
+
+    v1 = corners[...,1]-corners[...,0]
+    v2 = corners[...,3]-corners[...,0]
+    v3 = corners[...,7]-corners[...,0]
+    norm_x = np.cross(v1,v3,axis=0)
+    norm_y = np.cross(v2,v1,axis=0)
+    norm_z = np.cross(v3,v2,axis=0)
+
+    normal = np.stack([norm_x,norm_y,norm_z,-norm_x,-norm_y,-norm_z],axis=2)
+    normal /= np.sqrt((normal**2).sum(axis=0))
+    x_hat.shape = 3,1,1
+    top = faces[0,...]*normal[0,...]+faces[1,...]*normal[1,...]+faces[2,...]*normal[2,...]
+    bot = x_hat[0,...]*normal[0,...]+x_hat[1,...]*normal[1,...]+x_hat[2,...]*normal[2,...]
+    ok = np.abs(bot)>0
+
+    distance = np.zeros_like(top)+max_r
+    distance[ok] = top[ok]/bot[ok]
+    AAA = distance[...,:3].max(axis=1)
+    BBB = distance[...,3:].min(axis=1)
+    pole_axis = (AAA <= BBB).all()
+    print(pole_axis.sum())
+    pdb.set_trace()
+    return pole_axis
+
+
+
 
 def obliqueproj(xyz_p, corner_p):
     N = xyz_p.shape[1]

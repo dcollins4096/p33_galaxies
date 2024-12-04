@@ -60,7 +60,7 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
     #zone_emission = cube
 
     if verbose: print('make phi theta')
-    corners_persp,phi_persp,theta_persp=proj.make_phi_theta(corners, proj_axis)
+    corners_persp,phi_persp,theta_persp,xhat_persp=proj.make_phi_theta(corners, proj_axis)
 
     #take out the periodic wrap in phi
     phi_min = phi_persp.min(axis=1)
@@ -71,6 +71,19 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
     shift.shape = shift.size,1
     shift = (shift * (phi_persp<np.pi/2)) * 2*np.pi
     phi_persp = phi_persp + shift
+
+    #the pole zones have the x-axis passing through them, and y and z corners
+    #must cross zero.
+    x_min = corners_persp[0,...].min(axis=1)
+    x_max = corners_persp[0,...].max(axis=1)
+    y_min = corners_persp[1,...].min(axis=1)
+    y_max = corners_persp[1,...].max(axis=1)
+    z_min = corners_persp[2,...].min(axis=1)
+    z_max = corners_persp[2,...].max(axis=1)
+
+    pole_zone = (y_min < 0 ) * ( y_max > 0 ) * (z_min < 0 ) * (z_max > 0 )
+    north_pole = pole_zone * (x_min > 0)
+    south_pole = pole_zone * (x_min < 0)
 
     #draw circles around each zone.
     phi_cen=phi_persp.mean(axis=1)
@@ -102,9 +115,23 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
         edge_theta = np.array(edge_theta)[:-1]
         edge_phi = np.array(edge_phi)[:-1]
 
+        if pole_zone[izone]:
+            if south_pole[izone]:
+                this_r = np.pi-edge_theta
+            else:
+                this_r = edge_theta
+
+            edge_horz = this_r*np.cos(edge_phi)
+            edge_vert = this_r*np.sin(edge_phi)
+        else:
+            edge_horz = edge_theta
+            edge_vert = edge_phi
+
+
         #the 2d polygon for intersecting
         #How much of this can we vectorize?
-        zone_poly = np.stack([edge_theta,edge_phi])
+        #zone_poly = np.stack([edge_theta,edge_phi])
+        zone_poly = np.stack([edge_horz,edge_vert])
         q = Polygon(zone_poly.T)
         zone_area = q.area
         zone_column_density = quantity/zone_area
@@ -129,13 +156,13 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
         print("N pixels %d"%len(my_pix))
         for ipix in my_pix:
             xyz = hp.boundaries(NSIDE, ipix, step=1)
-            theta, phi = hp.vec2ang(xyz.T)
+            pix_theta, pix_phi = hp.vec2ang(xyz.T)
 			#check for convexity
             #We can do a rough cut on phi to see if we actually need to do this.
             #https://stackoverflow.com/questions/471962/how-do-i-efficiently-determine-if-a-polygon-is-convex-non-convex-or-complex
-            zxprod = np.zeros(phi.size)
-            x=theta
-            y=phi
+            zxprod = np.zeros(pix_phi.size)
+            x=pix_theta
+            y=pix_phi
             #print('theta',theta)
             #print('phi',phi)
             #if zprod changes sign, its not convex
@@ -154,32 +181,44 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
                     #Healpix pixels always have positive area, unless they straddle \phi=0,2pi.
                     #Then they're always negative except one point, and by jumping the first point before 
                     #the positive point by 2pi fixes the convexity.
-                    #continue
+
+                    #FIGURE OUT HOW TO AVOID np.where
                     nneg=(zxprod<0).sum()
                     if nneg == 3:
                         positive=np.where(zxprod>0)[0][0]
                         shifter = positive-1
                     if nneg == 1:
-                        shifter = np.argmin(phi)
+                        shifter = np.argmin(pix_phi)
                         
-                    if phi[shifter]  > np.pi:
-                        phi[shifter] -= 2*np.pi
+                    if pix_phi[shifter]  > np.pi:
+                        pix_phi[shifter] -= 2*np.pi
                         if edge_phi.min()>np.pi:
-                            phi += 2*np.pi
+                            pix_phi += 2*np.pi
                     else:
-                        phi[shifter] += 2*np.pi
+                        pix_phi[shifter] += 2*np.pi
                         if edge_phi.min()<np.pi:
-                            phi -= 2*np.pi
+                            pix_phi -= 2*np.pi
 
                 #sew up the seam.
-                if edge_phi.min() > phi.max():
-                    phi += 2*np.pi
+                if edge_phi.min() > pix_phi.max():
+                    pix_phi += 2*np.pi
+            if pole_zone[izone]:
+                if south_pole[izone]:
+                    this_r = np.pi-pix_theta
+                else:
+                    this_r = pix_theta
+
+                pix_horz = this_r*np.cos(pix_phi)
+                pix_vert = this_r*np.sin(pix_phi)
+            else:
+                pix_horz = pix_theta
+                pix_vert = pix_phi
 
 
             #intersect.
             #We can probably move the poly outside the zone loop, make an array of polygons.
             #faster but more memory.
-            ray_poly = np.stack([theta,phi])
+            ray_poly = np.stack([pix_horz,pix_vert])
             p = Polygon(ray_poly.T)
             intersection = p.intersection(q)
             area = intersection.area
