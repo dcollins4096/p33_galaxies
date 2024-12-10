@@ -11,39 +11,51 @@ reload(proj)
 if 1:
     #all sky
     #GOOD TEST.
-    cube, xyz, dxyz = proj.make_cube_full(9, stick_or_sphere=0)
-    cube = np.ones_like(cube)
+    n=16
+    cube, xyz, dxyz = proj.make_cube_full(n, stick_or_sphere=1)
+    #cube = np.ones_like(cube)
+    #plt.clf()
+    cubeb=cube+0
+    cubeb.shape=n,n,n
+    plt.imshow(cubeb.sum(axis=0))
+    plt.savefig('%s/cube_sphere'%plot_dir)
+    #cube = np.ones_like(cube)
     Nz = cube.size
-    NSIDE = 4
+    NSIDE = 8
     NPIX = hp.nside2npix(NSIDE)
     image = np.arange(NPIX)
     xyz_center = xyz.mean(axis=1)
     proj_axis=nar([1.,0,0])
     #best to avoid being exactly on the zone boundary
-    proj_center=xyz_center+1e-6
+    proj_center=xyz_center-1e-6
     #exclude N pixels from the center.
     #Best to skip some, huge pixels make the algorithm sad.
     exclude=2
 
     #these make everything slow.
-    molplot=False
-    moreplot=False
+    molplot=True
+    moreplots=False
     if 'last_image' not in dir():
         last_image=None
     image, counts=s3p.project(cube,xyz,dxyz,proj_center,proj_axis,molplot=molplot, NSIDE=NSIDE, exclude=exclude, moreplots=moreplots)#,last_image=last_image)#,cartplot=cartplot, mcartplot=mcartplot)
 
-    if 1:
+    if image is not None:
         plt.clf()
         #really make the bad pixels bad.
+        image /= image.max()
         image[image==0]=np.nan
-        hp.mollview(image, title="ones", min = image[image>0].min(), cmap='Reds', norm='log')
+        #image[44]=np.nan
+        from healpy.newvisufunc import projview, newprojplot
+        projview(image, title='ones', min = image[image>0].min(), cmap='Reds', norm='log', projection_type='polar')
+        #newprojplot([np.pi/2],[np.pi/2],marker='o')
+        #hp.mollview(image, title="ones", min = image[image>0].min(), cmap='Reds', norm='log')
         if NSIDE < 8 and False:
             #print the pixel number, for debugging.
             for ipix in np.arange(image.size)[:30]:
                 theta,phi = hp.pix2ang(NSIDE,ipix)
                 #hp.projscatter(theta,phi)
                 hp.projtext(theta,phi,"%d"%ipix)
-        prefix='%s/sky'%plot_dir
+        prefix='%s/sky_%d_'%(plot_dir,NSIDE)
         nplots = len(glob.glob(prefix+"*"))
         plt.savefig(prefix+"%03d"%nplots)
     if 1:

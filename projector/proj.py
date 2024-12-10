@@ -51,7 +51,10 @@ def make_sphere(N):
     dx = 1./N
     x,y,z = np.mgrid[0.5*dx:1+0.5*dx:dx,0.5*dx:1+0.5*dx:dx,0.5*dx:1+0.5*dx:dx]
     cube = np.zeros_like(x)
-    r2 = x**2+y**2+z**2
+    xc = x.mean()
+    yc = y.mean()
+    zc = z.mean()
+    r2 = (x-xc)**2+(y-yc)**2+(z-zc)**2
     cube[ r2<0.5**2]=1
     return cube
 def make_cube(N):
@@ -126,6 +129,7 @@ def make_phi_theta(xyz,projax,center=None):
     x_new = xyz_p[0]*x_p[0] + xyz_p[1]*x_p[1] + xyz_p[2]*x_p[2]
     y_new = xyz_p[0]*y_p[0] + xyz_p[1]*y_p[1] + xyz_p[2]*y_p[2]
     z_new = xyz_p[0]*z_p[0] + xyz_p[1]*z_p[1] + xyz_p[2]*z_p[2]
+    xyz_new = np.stack([x_new,y_new,z_new])
     r_new = np.sqrt(x_new**2+y_new**2+z_new**2)
     #theta_new = np.arctan2(np.sqrt(y_new**2 + x_new**2),z_new)
     #phi_new = np.arctan2(y_new, x_new) + np.pi
@@ -133,7 +137,7 @@ def make_phi_theta(xyz,projax,center=None):
     theta_new = np.arccos(x_new/r_new)
     phi_new = np.arctan2(z_new,y_new) + np.pi
     xyz_new = np.stack([x_new,y_new,z_new])
-    return xyz_new, phi_new, theta_new, x_p
+    return xyz_new, phi_new, theta_new
 
 def rotate(xyz,projax,center=None):
     if center is not None:
