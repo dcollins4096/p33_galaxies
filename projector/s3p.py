@@ -97,11 +97,46 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
     #not quite working right
     pix_theta_all = np.zeros([NPIX,4])
     pix_phi_all = np.zeros([NPIX,4])
+    fast_phi = True
     for ipix in np.arange(NPIX):
         this_xyz = hp.boundaries(NSIDE, ipix, step=1)
-        this_theta, this_phi = hp.vec2ang(this_xyz.T)
-        pix_theta_all[ipix,...]=this_theta
-        pix_phi_all[ipix,...]=this_phi
+        pix_theta, pix_phi = hp.vec2ang(this_xyz.T)
+        zxprod = np.zeros(pix_phi.size)
+        x=pix_theta
+        y=pix_phi
+        if (ipix > 3 and ipix < NPIX - 4) and fast_phi:
+            #don't have to do this, only when phi is within a healpix zone of 0 or 2 pi.
+            #This can be vectorized at this level, get rid of this k loop.
+            for k in np.arange(zxprod.size)-2:
+                dx1 = x[k+1]-x[k]
+                dy1 = y[k+1]-y[k]
+                dx2 = x[k+2]-x[k+1]
+                dy2 = y[k+2]-y[k+1]
+                zxprod[k] = dx1*dy2 - dy1*dx2
+
+            if np.abs(zxprod).sum() - np.abs(zxprod.sum()) > 0:
+                #Healpix pixels always have positive area, unless they straddle \phi=0,2pi.
+                #Then they're always negative except one point, and by jumping the first point before 
+                #the positive point by 2pi fixes the convexity.
+
+                #FIGURE OUT HOW TO AVOID np.where
+                nneg=(zxprod<0).sum()
+                if nneg == 3:
+                    positive=np.where(zxprod>0)[0][0]
+                    shifter = positive-1
+                if nneg == 1:
+                    shifter = np.argmin(pix_phi)
+                    
+                if pix_phi[shifter]  > np.pi:
+                    pix_phi[shifter] -= 2*np.pi
+                    #if edge_phi.min()>np.pi:
+                    #    pix_phi += 2*np.pi
+                else:
+                    pix_phi[shifter] += 2*np.pi
+                    #if edge_phi.min()<np.pi:
+                    #    pix_phi -= 2*np.pi
+        pix_theta_all[ipix,...]=pix_theta
+        pix_phi_all[ipix,...]=pix_phi
         #xyz_pix_boundaries[ipix,...] = this_xyz.T
     #I bet we can speed it up.
     #pix_theta_all, pix_phi_all = hp.vec2ang(xyz_pix_boundaries.T)
@@ -201,10 +236,12 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
             print("N pixels %d"%len(my_pix))
         for ipix in my_pix:
             xyz = hp.boundaries(NSIDE, ipix, step=1)
-            pix_theta, pix_phi = hp.vec2ang(xyz.T)
+            if fast_phi:
+                pix_theta = pix_theta_all[ipix]+0
+                pix_phi   = pix_phi_all[ipix]+0
+            else:
+                pix_theta, pix_phi = hp.vec2ang(xyz.T)
             #almost.
-            #pix_theta = pix_theta_all[ipix]
-            #pix_phi   = pix_phi_all[ipix]
 
             if False:
                 newprojplot(theta=edge_theta_theta,phi=edge_theta_phi,marker='o',color='b',markersize=1)
@@ -226,41 +263,45 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
             #print('phi',phi)
             #if zprod changes sign, its not convex
             #print('ipix',ipix)
-            if (ipix > 3 and ipix < NPIX - 4) and not pole_zone[izone]:
-                #don't have to do this, only when phi is within a healpix zone of 0 or 2 pi.
-                #This can be vectorized at this level, get rid of this k loop.
-                for k in np.arange(zxprod.size)-2:
-                    dx1 = x[k+1]-x[k]
-                    dy1 = y[k+1]-y[k]
-                    dx2 = x[k+2]-x[k+1]
-                    dy2 = y[k+2]-y[k+1]
-                    zxprod[k] = dx1*dy2 - dy1*dx2
+            if not fast_phi:
+                if (ipix > 3 and ipix < NPIX - 4) and not pole_zone[izone]:
+                    #don't have to do this, only when phi is within a healpix zone of 0 or 2 pi.
+                    #This can be vectorized at this level, get rid of this k loop.
+                    for k in np.arange(zxprod.size)-2:
+                        dx1 = x[k+1]-x[k]
+                        dy1 = y[k+1]-y[k]
+                        dx2 = x[k+2]-x[k+1]
+                        dy2 = y[k+2]-y[k+1]
+                        zxprod[k] = dx1*dy2 - dy1*dx2
 
-                if np.abs(zxprod).sum() - np.abs(zxprod.sum()) > 0:
-                    #Healpix pixels always have positive area, unless they straddle \phi=0,2pi.
-                    #Then they're always negative except one point, and by jumping the first point before 
-                    #the positive point by 2pi fixes the convexity.
+                    if np.abs(zxprod).sum() - np.abs(zxprod.sum()) > 0:
+                        #Healpix pixels always have positive area, unless they straddle \phi=0,2pi.
+                        #Then they're always negative except one point, and by jumping the first point before 
+                        #the positive point by 2pi fixes the convexity.
 
-                    #FIGURE OUT HOW TO AVOID np.where
-                    nneg=(zxprod<0).sum()
-                    if nneg == 3:
-                        positive=np.where(zxprod>0)[0][0]
-                        shifter = positive-1
-                    if nneg == 1:
-                        shifter = np.argmin(pix_phi)
-                        
-                    if pix_phi[shifter]  > np.pi:
-                        pix_phi[shifter] -= 2*np.pi
-                        if edge_phi.min()>np.pi:
-                            pix_phi += 2*np.pi
-                    else:
-                        pix_phi[shifter] += 2*np.pi
-                        if edge_phi.min()<np.pi:
-                            pix_phi -= 2*np.pi
+                        #FIGURE OUT HOW TO AVOID np.where
+                        nneg=(zxprod<0).sum()
+                        if nneg == 3:
+                            positive=np.where(zxprod>0)[0][0]
+                            shifter = positive-1
+                        if nneg == 1:
+                            shifter = np.argmin(pix_phi)
+                            
+                        if pix_phi[shifter]  > np.pi:
+                            pix_phi[shifter] -= 2*np.pi
+                            #if edge_phi.min()>np.pi:
+                            #    pix_phi += 2*np.pi
+                        else:
+                            pix_phi[shifter] += 2*np.pi
+                            #if edge_phi.min()<np.pi:
+                            #    pix_phi -= 2*np.pi
 
-                #sew up the seam.
+            #sew up the seam.
+            if 1:
                 if edge_phi.min() > pix_phi.max():
                     pix_phi += 2*np.pi
+                if edge_phi.max() < pix_phi.min():
+                    pix_phi -= 2*np.pi
 
             #if ipix== 764:
             #    pdb.set_trace()
