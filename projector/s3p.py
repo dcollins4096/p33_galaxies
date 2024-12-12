@@ -93,20 +93,34 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
     distance = np.sqrt((phi_persp-phi_cen)**2 + (theta_persp-theta_cen)**2)
     circle_radius = np.max(distance,axis=1)
 
+    if 1:
+        #fix me up to be vectorized.
+        this_cen_theta= theta_cen
+        this_cen_phi= phi_cen
 
-    #not quite working right
+        center_x = np.sin(this_cen_theta)*np.cos(this_cen_phi)
+        center_y = np.sin(this_cen_theta)*np.sin(this_cen_phi)
+        center_z = np.cos(this_cen_theta)
+        center_all = np.stack([center_x,center_y,center_z])
+        center_all.shape = 3,Nz
+        center_all = center_all.T
+
+
+    #Find all healpix pixel boundaries.
+    #Store so we don't have to look up a bunch.
+    #Remove any non-convex-ness
     pix_theta_all = np.zeros([NPIX,4])
     pix_phi_all = np.zeros([NPIX,4])
+    zxprod = np.zeros(4)
     fast_phi = True
     for ipix in np.arange(NPIX):
         this_xyz = hp.boundaries(NSIDE, ipix, step=1)
         pix_theta, pix_phi = hp.vec2ang(this_xyz.T)
-        zxprod = np.zeros(pix_phi.size)
         x=pix_theta
         y=pix_phi
+        #probably can make this logic only work when phi is close to 0 or 2 pi.
+        #Check if each pixel is convex.  If not, fix it.
         if (ipix > 3 and ipix < NPIX - 4) and fast_phi:
-            #don't have to do this, only when phi is within a healpix zone of 0 or 2 pi.
-            #This can be vectorized at this level, get rid of this k loop.
             for k in np.arange(zxprod.size)-2:
                 dx1 = x[k+1]-x[k]
                 dy1 = y[k+1]-y[k]
@@ -116,10 +130,9 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
 
             if np.abs(zxprod).sum() - np.abs(zxprod.sum()) > 0:
                 #Healpix pixels always have positive area, unless they straddle \phi=0,2pi.
-                #Then they're always negative except one point, and by jumping the first point before 
-                #the positive point by 2pi fixes the convexity.
+                #in which case the shape is non-convex.  Fix it.
+                #Kind of heath-robinson, we should be a little more rigorous with the fix.
 
-                #FIGURE OUT HOW TO AVOID np.where
                 nneg=(zxprod<0).sum()
                 if nneg == 3:
                     positive=np.where(zxprod>0)[0][0]
@@ -137,9 +150,6 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
                     #    pix_phi -= 2*np.pi
         pix_theta_all[ipix,...]=pix_theta
         pix_phi_all[ipix,...]=pix_phi
-        #xyz_pix_boundaries[ipix,...] = this_xyz.T
-    #I bet we can speed it up.
-    #pix_theta_all, pix_phi_all = hp.vec2ang(xyz_pix_boundaries.T)
 
 
     if molplot:
@@ -156,6 +166,7 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
         all_theta = theta_persp[izone]
         all_phi   = phi_persp[izone]
 
+        #If its a pole zone, work in "fake cartesian."
         if pole_zone[izone]:
             if south_pole[izone]:
                 this_r = np.pi-all_theta
@@ -177,8 +188,6 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
         edge_theta = np.array(edge_theta)[:-1]
         edge_phi = np.array(edge_phi)[:-1]
 
-
-
         #the 2d polygon for intersecting
         #How much of this can we vectorize?
         #zone_poly = np.stack([edge_theta,edge_phi])
@@ -186,16 +195,6 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
         zone_poly = Polygon(zone_poly_points.T)
         zone_area = zone_poly.area
         zone_column_density = quantity/zone_area
-
-        #compute the zone center in cartesian
-        #This can be vectorized, move out of the loop.
-        this_cen_theta= theta_cen[izone]
-        this_cen_phi= phi_cen[izone]
-        center_x = np.sin(this_cen_theta)*np.cos(this_cen_phi)
-        center_y = np.sin(this_cen_theta)*np.sin(this_cen_phi)
-        center_z = np.cos(this_cen_theta)
-        center = np.stack([center_x,center_y,center_z])
-
 
         if pole_zone[izone]:
             edge_theta_theta=np.sqrt(edge_theta**2+edge_phi**2)
@@ -229,17 +228,17 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
 
 
         #the all important pixel query
-        my_pix = hp.query_disc(nside=NSIDE,vec=center,radius=circle_radius[izone], inclusive=True)
+        my_pix = hp.query_disc(nside=NSIDE,vec=center_all[izone],radius=circle_radius[izone], inclusive=True)
 
         #code that works to find boundaries.
         if verbose2:
             print("N pixels %d"%len(my_pix))
         for ipix in my_pix:
-            xyz = hp.boundaries(NSIDE, ipix, step=1)
             if fast_phi:
                 pix_theta = pix_theta_all[ipix]+0
                 pix_phi   = pix_phi_all[ipix]+0
             else:
+                xyz = hp.boundaries(NSIDE, ipix, step=1)
                 pix_theta, pix_phi = hp.vec2ang(xyz.T)
             #almost.
 
@@ -253,48 +252,6 @@ def project(cube, xyz, dxyz, proj_center, proj_axis,bucket=None, molplot=False, 
                 continue
             if pix_theta.max() < all_theta.min():
                 continue
-            #check for convexity
-            #We can do a rough cut on phi to see if we actually need to do this.
-            #https://stackoverflow.com/questions/471962/how-do-i-efficiently-determine-if-a-polygon-is-convex-non-convex-or-complex
-            zxprod = np.zeros(pix_phi.size)
-            x=pix_theta
-            y=pix_phi
-            #print('theta',theta)
-            #print('phi',phi)
-            #if zprod changes sign, its not convex
-            #print('ipix',ipix)
-            if not fast_phi:
-                if (ipix > 3 and ipix < NPIX - 4) and not pole_zone[izone]:
-                    #don't have to do this, only when phi is within a healpix zone of 0 or 2 pi.
-                    #This can be vectorized at this level, get rid of this k loop.
-                    for k in np.arange(zxprod.size)-2:
-                        dx1 = x[k+1]-x[k]
-                        dy1 = y[k+1]-y[k]
-                        dx2 = x[k+2]-x[k+1]
-                        dy2 = y[k+2]-y[k+1]
-                        zxprod[k] = dx1*dy2 - dy1*dx2
-
-                    if np.abs(zxprod).sum() - np.abs(zxprod.sum()) > 0:
-                        #Healpix pixels always have positive area, unless they straddle \phi=0,2pi.
-                        #Then they're always negative except one point, and by jumping the first point before 
-                        #the positive point by 2pi fixes the convexity.
-
-                        #FIGURE OUT HOW TO AVOID np.where
-                        nneg=(zxprod<0).sum()
-                        if nneg == 3:
-                            positive=np.where(zxprod>0)[0][0]
-                            shifter = positive-1
-                        if nneg == 1:
-                            shifter = np.argmin(pix_phi)
-                            
-                        if pix_phi[shifter]  > np.pi:
-                            pix_phi[shifter] -= 2*np.pi
-                            #if edge_phi.min()>np.pi:
-                            #    pix_phi += 2*np.pi
-                        else:
-                            pix_phi[shifter] += 2*np.pi
-                            #if edge_phi.min()<np.pi:
-                            #    pix_phi -= 2*np.pi
 
             #sew up the seam.
             if 1:
