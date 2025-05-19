@@ -1,0 +1,210 @@
+#
+# AMR PROBLEM DEFINITION FILE: 
+#   CGM Isolated Galaxy Simulation
+#   Low Resolution
+#
+NumberOfOutputsBeforeExit = 0
+
+#
+#  Define Problem
+#
+ProblemType                           = 31         // Galaxy Simulation
+TopGridRank                           = 3
+TopGridDimensions                     = 128 128 128
+SelfGravity                           = 1          // gravity on
+TopGridGravityBoundary                = 1          // isolated gravity BCs
+UnigridTranspose                      = 0          // currently required for isolated BCs
+LeftFaceBoundaryCondition             = 3 3 3      // periodic
+RightFaceBoundaryCondition            = 3 3 3
+BaryonSelfGravityApproximation        = 1
+
+
+#
+# Set Units / Box Size
+#
+DensityUnits            = 1.67e-27     // Related to LCDM Critical Density [CGS]
+LengthUnits             = 5.055574e24  // 1638.4 kpc in cm
+TimeUnits               = 3.1557e+13   // 1 Myr in sec
+GravitationalConstant   = 1.3947913e-6  // 4 pi G_cgs * DensUn * TimeUn^2
+
+
+#
+#  Set I/O and Stop/Start Parameters
+#
+dtDataDump                      = 50 # Myr
+DataDumpName                    = DD
+StopCycle                       = 100000
+StopTime                        = 6000
+ParallelRootGridIO              = 0
+OutputTemperature               = 1
+OutputCoolingTime               = 1
+
+
+#
+# Set hydro parameters (from Cameron)
+#
+HydroMethod                     = 0         //* 0 = PPM; 2 = Zeus; 3 = MUSCL
+Gamma                           = 1.6667
+InterpolationMethod             = 4         // 1 = SecondOrderA;
+                                            // 4 seems to suppress hot spots
+ParticleCourantSafetyNumber     = 0.4
+RootGridCourantSafetyNumber     = 0.4
+UseMinimumPressureSupport       = 0
+MinimumPressureSupportParameter = 64.0
+DualEnergyFormalism             = 1         // Automatically off for Zeus
+FluxCorrection                  = 1
+CorrectParentBoundaryFlux       = 1         // Default is off
+ReconstructionMethod            = 1         // 1 = PPM; 0 = PLM
+RiemannSolver                   = 4         // 4 = HLLC, 5 = TwoShock
+RiemannSolverFallback           = 1         // HLL if there's a dnu<=0
+ConservativeInterpolation       = 0         // Default is on
+PPMDiffusionParameter           = 0         // Default is off
+
+
+#
+# Cooling parameters
+#
+use_grackle                     = 1
+with_radiative_cooling          = 1
+MultiSpecies                    = 2   // set to one if using Cloudy 4D or 5D
+MetalCooling                    = 1
+grackle_data_file               = CloudyData_UVB=HM2012.h5
+CMBTemperatureFloor             = 1
+UVbackground                    = 1
+RadiativeCooling                = 1
+H2FormationOnDust               = 1   // dust-to-gas scales with metallicity
+
+
+#
+# Stellar Disk/Bulge and Dark Matter Gravity
+#
+DiskGravity                           = 1
+DiskGravityPosition                   = 0.5 0.5 0.5
+GalaxySimulationAngularMomentum       = 0.0 0.0 -1.0
+DiskGravityStellarDiskMass            = 5.8e10         // Msun
+DiskGravityStellarDiskScaleHeightR    = 3.5e-3         // Mpc
+DiskGravityStellarDiskScaleHeightz    = 0.325e-3       // Mpc
+DiskGravityStellarBulgeMass           = 0.0            // Msun
+DiskGravityStellarBulgeR              = 0.0            // Mpc
+DiskGravityDarkMatterMass             = 1e12  // also GalaxySimulationGalaxyMass
+DiskGravityDarkMatterConcentration    = 10    // NFW, also GalaxySimulationGasHaloDMConcentrationParameter
+
+#
+# GalaxySimulation Parameters
+#
+GalaxySimulationRefineAtStart         = 1
+GalaxySimulationUseMetallicityField   = 1
+GalaxySimulationEquilibrateChem	      = 1
+GalaxySimulationEquilibriumFile       = /equilibrium_table_60_030-Zsun.h5
+
+# Gaseous Disk Params
+GalaxySimulationDiskPosition          = 0.5 0.5 0.5
+GalaxySimulationGasMass               = 5.0e9     // Msun; gas+dust
+GalaxySimulationDiskTemperature	      = 1.0e5	  // K
+GalaxySimulationDiskScaleHeightR      = 3.5e-3    // Mpc
+GalaxySimulationDiskScaleHeightz      = 0.325e-3  // Mpc
+GalaxySimulationDiskRadius            = 0.2       // code units; > TruncRadius
+GalaxySimulationTruncationRadius      = 0.0312    // Mpc
+GalaxySimulationDiskMetallicityEnhancementFactor = 7.666666667 // wrt Halo; Z~2.3 Zsun
+
+# Gaseous Halo Params
+GalaxySimulationGasHalo               = 6         // pNFW (Voit 19)
+GalaxySimulationGasHaloMetallicity    = 0.3       // solar units
+GalaxySimulationGasHaloRatio	      = 10.       // tcool/tff
+
+# Gaseous Halo Rotation
+GalaxySimulationGasHaloRotation              = 1
+GalaxySimulationGasHaloRotationIndex         = -0.5
+GalaxySimulationGasHaloRotationScaleVelocity = 180.0 // km/s; Hodges-Kluck
+GalaxySimulationGasHaloRotationScaleRadius   = 10.0  // kpc
+
+
+#
+# Star Formation and Feedback Parameters
+#
+StarParticleCreation              = 64    # Hopkins et al 13 (HOPKINS_STAR)
+StarParticleFeedback              = 1     # Cen & Ostriker 92 (NORMAL_STAR)
+
+# Criteria from Hopkins+13
+StarMakerVelDivCrit               = 1
+StarMakerSelfBoundCrit            = 0
+StarMakerThermalCrit              = 1     # controls both temp thres & tcool check
+StarMakerJeansMassCrit            = 0
+StarMakerH2Crit                   = 0
+StarMakerOverDensityThreshold     = 1.0e4 # actually a density criterion; code
+StarMakerTemperatureThreshold     = 3.0e3 # used it ThermalCrit = 1
+
+StarMakerMinimumMass              = 1.0e4 
+StarMakerMassEfficiency           = 0.2   # Oh et al 2020
+StarMakerMinimumDynamicalTime     = 1.0e6 # yr; same as default value
+StarMakerStochasticStarFormation  = 0
+StarMakerTimeIndependentFormation = 0     # if 1, remove dt/t_dyn factor
+
+# Parameters used by feedback
+StarMassEjectionFraction          = 0.25   
+StarMetalYield                    = 0.025
+StarFeedbackDistRadius            = 1      # At most, fb in a 3^3 cube around star
+StarFeedbackDistCellStep          = 3      # include all cells in a 3^3 cube
+StarFeedbackThermalEfficiencyRamp = 1	   # linear in time
+StarFeedbackThermalEfficiencyRampStartTime = 1000.
+StarFeedbackThermalEfficiencyRampEndTime   = 2000.
+StarFeedbackThermalEfficiencyRampStartValue = 5e-8
+StarFeedbackThermalEfficiencyRampEndValue   = 5e-6
+
+#
+#  Grid Refinement Parameters
+#
+# 
+StaticHierarchy                       = 0         // dynamic hierarchy
+MaximumRefinementLevel                = 7
+RefineBy                              = 2         // refinement factor
+CellFlaggingMethod                    = 2 13      // refine on baryon mass, metallicity
+MinimumEfficiency                     = 0.4       // fraction efficiency
+MinimumMassForRefinement              = 2.457e-9 0.0  // target point: 
+                                                      // log(M)=36.22 g at lvl 5
+MinimumMassForRefinementLevelExponent = -0.5 0.0  // threshold lowers with level
+                                                  // to prevent excessive refinment
+                                                  // on lower levels
+MetallicityRefinementMinMetallicity   = 0.4       // in units of solar
+MetallicityRefinementMinLevel         = 3
+SubgridSizeAutoAdjust                 = 1
+LoadBalancing                         = 4
+
+RefineRegionLeftEdge                  = 0.25 0.25 0.25
+RefineRegionRightEdge                 = 0.75 0.75 0.75
+
+MultiRefineRegionGeometry[0]          = 0
+MultiRefineRegionLeftEdge[0]          = 0.25 0.25 0.25
+MultiRefineRegionRightEdge[0]         = 0.75 0.75 0.75
+MultiRefineRegionMinimumLevel[0]      = 1
+MultiRefineRegionMaximumLevel[0]      = 3
+
+MultiRefineRegionGeometry[1]          = 0
+MultiRefineRegionLeftEdge[1]          = 0.375 0.375 0.375
+MultiRefineRegionRightEdge[1]         = 0.625 0.625 0.625
+MultiRefineRegionMinimumLevel[1]      = 2
+MultiRefineRegionMaximumLevel[1]      = 3
+
+MultiRefineRegionGeometry[2]          = 0
+MultiRefineRegionLeftEdge[2]          = 0.40625 0.40625 0.40625
+MultiRefineRegionRightEdge[2]         = 0.59375 0.59375 0.59375
+MultiRefineRegionMinimumLevel[2]      = 3
+MultiRefineRegionMaximumLevel[2]      = 7
+
+MultiRefineRegionGeometry[3]          = 0
+MultiRefineRegionLeftEdge[3]          = 0.4375 0.4375 0.4375
+MultiRefineRegionRightEdge[3]         = 0.5625 0.5625 0.5625
+MultiRefineRegionMinimumLevel[3]      = 4
+MultiRefineRegionMaximumLevel[3]      = 7
+
+MultiRefineRegionGeometry[4]          = 0
+MultiRefineRegionLeftEdge[4]          = 0.46875 0.46875 0.46875
+MultiRefineRegionRightEdge[4]         = 0.53125 0.53125 0.53125
+MultiRefineRegionMinimumLevel[4]      = 5
+MultiRefineRegionMaximumLevel[4]      = 7
+
+MultiRefineRegionGeometry[5]          = 0
+MultiRefineRegionLeftEdge[5]          = 0.484741211 0.484741211 0.497070313
+MultiRefineRegionRightEdge[5]         = 0.515258789 0.515258789 0.502929688
+MultiRefineRegionMinimumLevel[5]      = 6
+MultiRefineRegionMaximumLevel[5]      = 7
