@@ -1,5 +1,22 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import os
+
+def plot_stream_and_rm(X,Y,Z,Bx,By,Bz,theta,phi,rm,axis='z',fname='image'):
+
+    fig,ax=plt.subplots(2,3,figsize=(12,8))
+    ax0,ax1=ax
+    plot_B_streamlines(X, Y, Z, Bx, By, Bz, axis='x',ax_in=ax0[0])
+    plot_B_streamlines(X, Y, Z, Bx, By, Bz, axis='y',ax_in=ax0[1])
+    plot_B_streamlines(X, Y, Z, Bx, By, Bz, axis='z',ax_in=ax0[2])
+
+    scat=ax1[0].scatter(theta,phi,c=rm, cmap='viridis')
+    fig.colorbar(scat,ax=ax1[0])
+    ax1[1].hist(rm)
+    fig.savefig('%s/plots/%s'%(os.environ['HOME'],fname))
+    plt.close(fig)
+
+
 
 def plot_B_streamlines(X, Y, Z, Bx, By, Bz, axis='z', slice_index=None, ax_in=None):
     """
