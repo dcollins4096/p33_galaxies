@@ -58,14 +58,18 @@ def trainer(model, data,parameters, validatedata,validateparams,epochs=1, lr=1e-
         data_n =  data[subset_n]
         param_n = parameters[subset_n]
         optimizer.zero_grad()
+        print('m')
         output1=model(data_n)
+        print('loss')
         loss = model.criterion(output1, param_n)
+        print('back')
         loss.backward()
+        print('opt')
         optimizer.step()
         scheduler.step()
         tnow = time.time()
         tel = tnow-t0
-        if (epoch>0 and epoch%100==0) or epoch==10:
+        if epoch > 0: #(epoch>0 and epoch%100==0) or epoch==10:
             model.eval()
             mod1 = model(validatedata)
             this_loss = model.criterion(mod1, validateparams)
@@ -98,31 +102,6 @@ def trainer(model, data,parameters, validatedata,validateparams,epochs=1, lr=1e-
     plt.savefig('%s/errortime_test%d'%(plot_dir,idd))
 
 
-import torch
-import torch.nn as nn
-
-import math
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import math
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-# ---------------------------
-# Utils
-# ---------------------------
-def sph_to_cart(theta, phi):
-    """theta: polar angle in [0, pi], phi in [0, 2pi).
-    theta, phi: (B, N)
-    returns: (B, N, 3)
-    """
-    st = torch.sin(theta)
-    x = st * torch.cos(phi)
-    y = st * torch.sin(phi)
-    z = torch.cos(theta)
-    return torch.stack([x, y, z], dim=-1)
 
 import torch
 import torch.nn as nn
@@ -133,7 +112,6 @@ def knn(xyz, k):
     xyz: [B, N, 3]
     Returns idx: [B, N, k] with indices of k nearest neighbors
     """
-    B, N, _ = xyz.shape
     dist = torch.cdist(xyz, xyz)  # [B, N, N]
     idx = dist.topk(k, largest=False)[1]  # [B, N, k]
     return idx
@@ -144,6 +122,8 @@ class LocalSphereAttention(nn.Module):
         self.n_heads = n_heads
         self.k = k
         self.head_dim = dim // n_heads
+
+        assert dim % n_heads == 0, "dim must be divisible by n_heads"
 
         self.q_proj = nn.Linear(dim, dim)
         self.k_proj = nn.Linear(dim, dim)
@@ -156,69 +136,82 @@ class LocalSphereAttention(nn.Module):
             nn.Linear(32, n_heads)
         )
 
+    def gather_neighbor_xyz(self, xyz, idx):
+        """
+        Gathers neighbor xyz coordinates using advanced indexing.
+
+        xyz: [B, N, 3]
+        idx: [B, N, k]
+
+        Returns:
+            neighbor_xyz: [B, N, k, 3]
+        """
+        B, N, _ = xyz.shape
+        k = idx.size(-1)
+
+        batch_indices = torch.arange(B, device=xyz.device).view(B, 1, 1).expand(B, N, k)  # [B, N, k]
+        neighbor_xyz = xyz[batch_indices, idx, :]  # [B, N, k, 3]
+        return neighbor_xyz
+
     def forward(self, x, xyz):
         """
-        x: [B, N, C]
-        xyz: [B, N, 3]
+        x: [B, N, C] input features
+        xyz: [B, N, 3] input xyz coordinates on sphere
+
+        Returns:
+            out: [B, N, C] output features after local attention
         """
         B, N, C = x.shape
         k = self.k
 
         idx = knn(xyz, k)  # [B, N, k]
 
-        # Gather neighbor features
+        # Project features
         q = self.q_proj(x).view(B, N, self.n_heads, self.head_dim)  # [B, N, H, D]
         k_feat = self.k_proj(x).view(B, N, self.n_heads, self.head_dim)
         v_feat = self.v_proj(x).view(B, N, self.n_heads, self.head_dim)
 
-        # [B, N, k, C]
-        k_neighbors = torch.gather(
-            k_feat,
-            1,
-            idx.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, -1, self.n_heads, self.head_dim)
-        )
-        v_neighbors = torch.gather(
-            v_feat,
-            1,
-            idx.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, -1, self.n_heads, self.head_dim)
-        )
+        # Gather neighbor k and v features
+        # Expand idx dims for gathering
+        idx_expanded = idx.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, -1, self.n_heads, self.head_dim)  # [B, N, k, H, D]
 
-        # q: [B, N, H, D] -> [B, H, N, D]
-        q = q.permute(0, 2, 1, 3)
+        k_neighbors = torch.gather(
+            k_feat.unsqueeze(1).expand(-1, N, -1, -1, -1),  # [B, N, N, H, D]
+            2,
+            idx_expanded
+        )  # [B, N, k, H, D]
+
+        v_neighbors = torch.gather(
+            v_feat.unsqueeze(1).expand(-1, N, -1, -1, -1),  # [B, N, N, H, D]
+            2,
+            idx_expanded
+        )  # [B, N, k, H, D]
+
+        # Permute dims for multihead attention computation
+        q = q.permute(0, 2, 1, 3)  # [B, H, N, D]
         k_neighbors = k_neighbors.permute(0, 3, 1, 2, 4)  # [B, H, N, k, D]
         v_neighbors = v_neighbors.permute(0, 3, 1, 2, 4)  # [B, H, N, k, D]
 
-# xyz: [B, N, 3]
-# idx: [B, N, k] (indices of neighbors)
+        # Gather neighbor xyz coords
+        neighbor_xyz = self.gather_neighbor_xyz(xyz, idx)  # [B, N, k, 3]
 
-# We want neighbor_xyz: [B, N, k, 3]
-        B, N, _ = xyz.shape
-        k = idx.size(-1)
-
-# Expand idx to have a last dim for the xyz coordinate index
-        idx_expanded = idx.unsqueeze(-1).expand(-1, -1, -1, 3)  # [B, N, k, 3]
-
-# Gather along dim=1 (the N dimension)
-        neighbor_xyz = torch.gather(
-            xyz.unsqueeze(1).expand(-1, N, -1, -1),  # [B, N, N, 3]
-            2,  # gather neighbors in the N dimension
-            idx_expanded
-        )  # [B, N, k, 3]
-
+        # Compute relative positional encodings (bias)
         rel_pos = xyz.unsqueeze(2) - neighbor_xyz  # [B, N, k, 3]
         bias_out = self.bias_mlp(rel_pos.view(-1, 3))  # [(B*N*k), H]
         bias_out = bias_out.view(B, N, k, self.n_heads).permute(0, 3, 1, 2)  # [B, H, N, k]
 
-        # Attention scores
+        # Compute attention scores
         attn_scores = torch.einsum('bhid,bhikd->bhik', q, k_neighbors) / (self.head_dim ** 0.5)
         attn_scores = attn_scores + bias_out
         attn = F.softmax(attn_scores, dim=-1)
 
-        # Output
+        # Aggregate values
         out = torch.einsum('bhik,bhikd->bhid', attn, v_neighbors)  # [B, H, N, D]
-        out = out.permute(0, 2, 1, 3).reshape(B, N, C)
+        out = out.permute(0, 2, 1, 3).reshape(B, N, C)  # [B, N, C]
+
         out = self.o_proj(out)
         return out
+
 
 class SphereformerBlock(nn.Module):
     def __init__(self, dim, n_heads, k):
@@ -238,7 +231,7 @@ class SphereformerBlock(nn.Module):
         return x
 
 class main_net(nn.Module):
-    def __init__(self, input_dim=3, embed_dim=64, depth=4, n_heads=8, k=15, num_outputs=100):
+    def __init__(self, input_dim=3, embed_dim=64, depth=4, n_heads=8, k=15, num_outputs=15):
         super().__init__()
         self.embed = nn.Linear(input_dim, embed_dim)
         self.blocks = nn.ModuleList([
@@ -253,12 +246,12 @@ class main_net(nn.Module):
         """
         B, C, N = sky.shape
         assert C == 3, "sky should have 3 channels (theta, phi, rm)"
+        print('start')
 
         theta = sky[:, 0, :]
         phi = sky[:, 1, :]
         rm = sky[:, 2, :]
 
-        # Spherical to Cartesian
         xyz = torch.stack([
             torch.sin(theta) * torch.cos(phi),
             torch.sin(theta) * torch.sin(phi),
@@ -269,14 +262,16 @@ class main_net(nn.Module):
         x = self.embed(feats)  # [B, N, embed_dim]
 
         for blk in self.blocks:
+            print('hi', len(self.blocks))
             x = blk(x, xyz)
 
         x = self.norm(x)
         x = x.mean(dim=1)  # global pooling
-        out = self.fc_out(x)  # spherical harmonic coefficients
+        print('fc')
+        out = self.fc_out(x)  # [B, num_outputs]
+        print('done')
         return out
 
     def criterion(self, pred, target):
-        """L1 loss for training."""
         return F.l1_loss(pred, target)
 
