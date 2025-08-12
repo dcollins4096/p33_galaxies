@@ -15,13 +15,8 @@ plot_dir = "%s/plots"%os.environ['HOME']
 idd = 3
 what = "Spherical Transformer but actually runs.  Local attention block"
 
-def init_weights_constant(m):
-    if isinstance(m, nn.Linear):
-        #nn.init.constant_(m.weight, 0.5)
-        nn.init.constant_(m.bias, 0.1)
 
 def thisnet():
-
     hidden_dims = 256,
     conv_channels = 32
     model = main_net()
@@ -58,13 +53,9 @@ def trainer(model, data,parameters, validatedata,validateparams,epochs=1, lr=1e-
         data_n =  data[subset_n]
         param_n = parameters[subset_n]
         optimizer.zero_grad()
-        print('m')
         output1=model(data_n)
-        print('loss')
         loss = model.criterion(output1, param_n)
-        print('back')
         loss.backward()
-        print('opt')
         optimizer.step()
         scheduler.step()
         tnow = time.time()
@@ -246,7 +237,6 @@ class main_net(nn.Module):
         """
         B, C, N = sky.shape
         assert C == 3, "sky should have 3 channels (theta, phi, rm)"
-        print('start')
 
         theta = sky[:, 0, :]
         phi = sky[:, 1, :]
@@ -262,14 +252,11 @@ class main_net(nn.Module):
         x = self.embed(feats)  # [B, N, embed_dim]
 
         for blk in self.blocks:
-            print('hi', len(self.blocks))
             x = blk(x, xyz)
 
         x = self.norm(x)
         x = x.mean(dim=1)  # global pooling
-        print('fc')
         out = self.fc_out(x)  # [B, num_outputs]
-        print('done')
         return out
 
     def criterion(self, pred, target):
