@@ -11,16 +11,16 @@ reload(loader)
 
 new_model = 1
 load_model = 0
-train_model = 0
+train_model = 1
 save_model = 1
-plot_models = 0
+plot_models = 1
 
 if new_model:
-    import networks.net0002 as net
+    import networks.net0003 as net
     reload(net)
     model = net.thisnet()
 
-sky, clm = loader.loader('clm_take2.h5',ntrain=900, nvalid=20)
+sky, clm = loader.loader('clm_take4.h5',ntrain=900, nvalid=3)
 
 if load_model:
     model.load_state_dict(torch.load("models/test%d.pth"%net.idd))
@@ -43,7 +43,9 @@ if train_model:
     total_time="%02d:%02d:%02d"%(hrs,minute,sec)
 
 
+model.idd = net.idd
 if plot_models:
+    print('ploot')
     err=[]
     delta = []
     fig,ax=plt.subplots(1,3, figsize=(12,4))
@@ -52,7 +54,9 @@ if plot_models:
         err.append( model.criterion(moo,ccc.unsqueeze(0)))
         delta = torch.abs( 1-moo/ccc).detach().numpy()[0]
         ax[1].plot(delta, marker='*')
-        ax[2].plot( ccc.detach().numpy(),moo[0].detach().numpy())
+        c1, m1 =  ccc.detach().numpy(),moo[0].detach().numpy()
+        args = np.argsort(c1)
+        ax[2].plot(c1[args],m1[args])
 
     err = torch.tensor(err).detach().numpy()
     ax[0].hist(err)
@@ -61,6 +65,7 @@ if plot_models:
     ax[2].set(xlabel='actual',ylabel='guess')
     fig.tight_layout()
     oname = '%s/plots/errhist_%d'%(os.environ['HOME'],model.idd)
+    print(oname)
     fig.savefig(oname)
 
 
