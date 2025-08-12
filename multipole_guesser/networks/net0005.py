@@ -187,13 +187,18 @@ class LocalSphereAttention(nn.Module):
         k_feat = k_feat.permute(0, 2, 1, 3)  # [B, H, N, D]
         v_feat = v_feat.permute(0, 2, 1, 3)  # [B, H, N, D]
 
-        # idx shape: [B, N, k]
-        # For gather, expand idx for heads and dims:
-        idx_expanded = idx.unsqueeze(1).expand(B, self.n_heads, N, k)  # [B, H, N, k]
+# k_feat, v_feat shape: [B, H, N, D]
+        B, H, N, D = k_feat.shape
+        k = idx.shape[-1]
 
-        # gather along dim=2 (N)
-        k_neighbors = torch.gather(k_feat, 2, idx_expanded.unsqueeze(-1).expand(-1, -1, -1, -1, self.head_dim))  # [B, H, N, k, D]
-        v_neighbors = torch.gather(v_feat, 2, idx_expanded.unsqueeze(-1).expand(-1, -1, -1, -1, self.head_dim))  # [B, H, N, k, D]
+        idx_expanded = idx.unsqueeze(1).expand(B, H, N, k)  # [B, H, N, k]
+        batch_idx = torch.arange(B, device=k_feat.device).view(B, 1, 1, 1).expand(B, H, N, k)
+        head_idx = torch.arange(H, device=k_feat.device).view(1, H, 1, 1).expand(B, H, N, k)
+
+        k_neighbors = k_feat[batch_idx, head_idx, idx_expanded, :]  # [B, H, N, k, D]
+        v_neighbors = v_feat[batch_idx, head_idx, idx_expanded, :]  # [B, H, N, k, D]
+
+
 
         # q: [B, N, H, D] -> [B, H, N, D]
         q = q.permute(0, 2, 1, 3)  # [B, H, N, D]
