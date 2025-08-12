@@ -58,14 +58,14 @@ def trainer(model, data,parameters, validatedata,validateparams,epochs=1, lr=1e-
         data_n =  data[subset_n]
         param_n = parameters[subset_n]
         optimizer.zero_grad()
-        output1=model(data_n)
+        output1, attn_map =model(data_n)
         loss = model.criterion(output1, param_n)
         loss.backward()
         optimizer.step()
         scheduler.step()
         tnow = time.time()
         tel = tnow-t0
-        if (epoch>0 and epoch%100==0) or epoch==10:
+        if epoch > 0: #(epoch>0 and epoch%100==0) or epoch==10:
             model.eval()
             mod1 = model(validatedata)
             this_loss = model.criterion(mod1, validateparams)
@@ -195,7 +195,7 @@ class GeoBiasAttention(nn.Module):
 
         # small MLP to map cos(angle) -> scalar bias per head (we output per-head biases)
         self.bias_mlp = nn.Sequential(
-            nn.Linear(1, bias_mlp_hidden),
+            nn.Linear(3, bias_mlp_hidden),
             nn.ReLU(),
             nn.Linear(bias_mlp_hidden, n_heads)
         )
@@ -220,12 +220,20 @@ class GeoBiasAttention(nn.Module):
         cos_theta = torch.einsum('b i d, b j d -> b i j', xyz, xyz)  # (B,N,N)
         cos_theta_clamped = cos_theta.unsqueeze(1)  # (B,1,N,N)
 
-        # Pass cos_theta through bias_mlp (apply to each pair)
-        # bias_mlp expects shape (...,1), so flatten
-        bias_in = cos_theta_clamped.reshape(B * 1 * N * N, 1)
-        bias_out = self.bias_mlp(bias_in)           # (B*N*N, H)
-        bias_out = bias_out.view(B, 1, N, N, self.n_heads)  # (B,1,N,N,H)
-        bias_out = bias_out.permute(0, 4, 2, 3)     # (B, H, N, N)
+        # Suppose xyz is computed from theta, phi inside forward()
+        # xyz: [B, N, 3]
+
+        # Compute bias from relative positions
+        rel_pos = xyz[:, :, None, :] - xyz[:, None, :, :]   # [B, N, N, 3]
+        bias_in = rel_pos.reshape(B * N * N, 3)             # [B*N*N, 3]
+        bias_out = self.bias_mlp(bias_in)                   # [B*N*N, H]
+
+        # Reshape to [B, N, N, H]
+        bias_out = bias_out.view(B, N, N, self.n_heads)
+
+        # Move heads dimension before N,N: [B, H, N, N]
+        bias_out = bias_out.permute(0, 3, 1, 2)
+
 
         # Add bias to scores
         scores = scores + bias_out
@@ -295,6 +303,7 @@ class main_net(nn.Module):
             nn.GELU(),
             nn.Linear(d_model // 2, out_dim)
         )
+        self.L1 = nn.L1Loss()
 
     def forward(self, data, attn_mask=None):
         """
@@ -330,4 +339,7 @@ class main_net(nn.Module):
 
         out = self.regressor(pooled)
         return out, attn_maps
+    def criterion(self, guess, target):
+        return self.L1(guess,target)
+
 
