@@ -9,18 +9,18 @@ import time
 import loader
 reload(loader)
 
-new_model = 0
+new_model = 1
 load_model = 0
 train_model = 0
-save_model = 0
-plot_models = 1
+save_model = 1
+plot_models = 0
 
 if new_model:
-    import networks.net0001 as net
+    import networks.net0002 as net
     reload(net)
     model = net.thisnet()
 
-sky, clm = loader.loader('clm_take1.h5',ntrain=80, nvalid=10)
+sky, clm = loader.loader('clm_take2.h5',ntrain=900, nvalid=20)
 
 if load_model:
     model.load_state_dict(torch.load("models/test%d.pth"%net.idd))
@@ -32,7 +32,7 @@ if train_model:
     net.train(model,sky['train'],clm['train'], sky['valid'],clm['valid'])
 
     if save_model:
-        oname = "models/test%d.pth"%testnum
+        oname = "models/test%d.pth"%model.idd
         torch.save(model.state_dict(), oname)
         print("model saved ",oname)
 
@@ -60,6 +60,7 @@ if plot_models:
     ax[1].set(xlabel='Clm',ylabel='Rel Err', yscale='log')
     ax[2].set(xlabel='actual',ylabel='guess')
     fig.tight_layout()
-    fig.savefig('%s/plots/errhist_%d'%(os.environ['HOME'],model.idd))
+    oname = '%s/plots/errhist_%d'%(os.environ['HOME'],model.idd)
+    fig.savefig(oname)
 
 
