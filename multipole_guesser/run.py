@@ -16,11 +16,12 @@ save_model = 1
 plot_models = 1
 
 if new_model:
-    import networks.net0003 as net
+    import networks.net0013 as net
     reload(net)
     model = net.thisnet()
 
-sky, clm = loader.loader('clm_take4.h5',ntrain=900, nvalid=3)
+sky, clm = loader.loader('clm_take6.h5',ntrain=512, nvalid=3)
+#sky, clm = loader.loader('clm_take6.h5',ntrain=4, nvalid=3)
 
 if load_model:
     model.load_state_dict(torch.load("models/test%d.pth"%net.idd))
@@ -49,8 +50,8 @@ if plot_models:
     err=[]
     delta = []
     fig,ax=plt.subplots(1,3, figsize=(12,4))
-    for sss,ccc in zip( sky['test'],clm['test']):
-        moo = model(sss.unsqueeze(0))
+    for sss,ccc in zip( sky['train'],clm['train']):
+        moo = model(sss.unsqueeze(0), pool=True)
         err.append( model.criterion(moo,ccc.unsqueeze(0)))
         delta = torch.abs( 1-moo/ccc).detach().numpy()[0]
         ax[1].plot(delta, marker='*')
