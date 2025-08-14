@@ -40,11 +40,15 @@ def thisnet():
                                num_coeffs=8)
 
     model = model.to('cuda' if torch.cuda.is_available() else 'cpu')
+    for m in model.modules():
+        if isinstance(m, nn.Linear):
+            nn.init.xavier_uniform_(m.weight)
+            nn.init.zeros_(m.bias)
     return model
 
 def train(model,data,parameters, validatedata, validateparams):
-    epochs  = 3000
-    lr = 3e-4
+    epochs  = 8000
+    lr = 1e-6
     batch_size=4 #net 8
     trainer(model,data,parameters,validatedata,validateparams,epochs=epochs,lr=lr,batch_size=batch_size)
 
@@ -69,19 +73,15 @@ class SphericalDataset(Dataset):
         phi   = self.data[:, 1, :]
         rm    = self.data[:, 2, :]
 
-        # angle scaling to [-1,1]
-        theta_scaled = (theta / math.pi) * 2.0 - 1.0
-        phi_scaled   = (phi / math.pi) - 1.0
-
         # rm standardize
         if rm_mean is None or rm_std is None or fit_stats:
             rm_mean = rm.mean()
             rm_std  = rm.std().clamp_min(1e-6)
         rm_scaled = (rm - rm_mean) / rm_std
 
-        self.data[:, 0, :] = theta_scaled
-        self.data[:, 1, :] = phi_scaled
-        self.data[:, 2, :] = rm_scaled
+        self.data[:, 0, :] = theta
+        self.data[:, 1, :] = phi
+        self.data[:, 2, :] = rm
 
         self.rm_mean = rm_mean
         self.rm_std  = rm_std
@@ -151,8 +151,9 @@ def trainer(
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
     total_steps = epochs * max(1, len(train_loader))
+    print("Total Steps", total_steps)
     warmup_steps = int(warmup_frac * total_steps)
-    scheduler = WarmupCosine(optimizer, warmup_steps=warmup_steps, total_steps=total_steps)
+    #scheduler = WarmupCosine(optimizer, warmup_steps=warmup_steps, total_steps=total_steps)
 
     scaler = torch.cuda.amp.GradScaler(enabled=(device=="cuda"))
 
@@ -177,7 +178,8 @@ def trainer(
             optimizer.zero_grad(set_to_none=True)
             if verbose:
                 print("  model")
-            with torch.cuda.amp.autocast(enabled=(device=="cuda")):
+            #with torch.cuda.amp.autocast(enabled=(device=="cuda")):
+            if 1:
                 preds = model(xb)
                 if verbose:
                     print("  crit")
@@ -194,7 +196,7 @@ def trainer(
                 print("  steps")
             scaler.step(optimizer)
             scaler.update()
-            scheduler.step()
+            #scheduler.step()
 
             running += loss.item() * xb.size(0)
 
@@ -232,18 +234,22 @@ def trainer(
         etad = datetime.datetime.fromtimestamp(now + secs_left)
         eta = etad.strftime("%H:%M:%S")
         nowdate = datetime.datetime.fromtimestamp(now)
+        #lr = scheduler.get_last_lr()[0]
+        lr = lr
+
         print(f"[{epoch:3d}/{epochs}] train {train_loss:.4f} | val {val_loss:.4f} | "
-              f"lr {scheduler.get_last_lr()[0]:.2e} | bad {bad_epochs:02d} | ETA {eta}")
+              f"lr {lr:.2e} | bad {bad_epochs:02d} | ETA {eta}")
         if nowdate.day - etad.day != 0:
             print('tomorrow')
 
         if bad_epochs >= patience:
             print(f"Early stopping at epoch {epoch}. Best val {best_val:.4f}.")
-            break
+            print('disabled')
+            #break
 
     # restore best
-    if best_state is not None:
-        model.load_state_dict(best_state)
+    #if best_state is not None:
+    #    model.load_state_dict(best_state)
 
     # quick plot (optional)
     if plot_path:
