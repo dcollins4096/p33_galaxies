@@ -14,21 +14,20 @@ import time
 import datetime
 import torch
 
-Ntheta_phi = 1000
+Ntheta_phi = 5000
 Nsph = 3000
 N_ell = 2
-Nzones = 32
+Nzones = 64
 L_max = 2
 center = np.array([Nzones//2,Nzones//2,Nzones//2])
 rho = np.ones([Nzones]*3)
-fname = 'clm_take6.h5'
+fname = 'clm_take7_N64_los5000.h5'
 
 
 N_ell_em = ((np.arange(N_ell)+1)*2+1).sum()
 
 RM_all=np.zeros([Nsph,Ntheta_phi])
 
-np.random.seed(8675309)
 theta_all = np.zeros([Nsph,Ntheta_phi])
 phi_all = np.zeros([Nsph,Ntheta_phi])
 
@@ -78,6 +77,11 @@ for nnn in np.arange(Nsph):
                     chunks=(1, size),       # chunking needed for resizing
                     dtype='float64'
                 )
+            f['Ntheta_phi']=   Ntheta_phi 
+            f['Nsph']=         Nsph 
+            f['N_ell']=        N_ell 
+            f['Nzones']=       Nzones 
+            f['L_max']=        L_max 
 
     with h5py.File(fname, "r+") as f:
         for setname in ['Clm','Rm','theta','phi']:
@@ -86,6 +90,7 @@ for nnn in np.arange(Nsph):
             dset = f[setname]
             dset.resize((dset.shape[0] + 1, size))   # increase row count by 1
             dset[-1, :] = arr    
+        
 
     tnow = time.time()
     telap = tnow-t0
