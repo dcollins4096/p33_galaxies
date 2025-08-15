@@ -14,8 +14,8 @@ import random
 import os
 import matplotlib.pyplot as plt
 import torch.optim as optim
-idd = 13
-what = "11 with more capacity (12) and hopefully faster"
+idd = 12
+what = "11 with more capacity"
 
 def thisnet():
 # create a healpix grid of nside_out
@@ -57,11 +57,13 @@ class SphericalDataset(Dataset):
       - phi   in [0,2pi] -> scaled to [-1,1] via (phi/pi)-1
       - rm    -> standardized by train mean/std (computed here across full tensor)
     """
-    def __init__(self, data, targets, rm_mean=None, rm_std=None, fit_stats=False, nside=8):
+    def __init__(self, data, targets, rm_mean=None, rm_std=None, fit_stats=False):
         assert data.ndim == 3 and data.size(1) == 3
         self.data = data.clone()
         self.targets = targets.clone()
 
+        theta = self.data[:, 0, :]
+        phi   = self.data[:, 1, :]
         rm    = self.data[:, 2, :]
 
         # rm standardize
@@ -70,19 +72,18 @@ class SphericalDataset(Dataset):
             rm_std  = rm.std().clamp_min(1e-6)
         rm_scaled = (rm - rm_mean) / rm_std
 
+        self.data[:, 0, :] = theta
+        self.data[:, 1, :] = phi
         self.data[:, 2, :] = rm
 
         self.rm_mean = rm_mean
         self.rm_std  = rm_std
-        sampler = HealpixSampler(nside)
-        self.pooled = sampler(data)
 
     def __len__(self):
         return self.data.size(0)
 
     def __getitem__(self, idx):
-        #return self.data[idx], self.targets[idx]
-        return self.pooled[idx], self.targets[idx]
+        return self.data[idx], self.targets[idx]
 
 # ---------------------------
 # Utils
@@ -133,12 +134,10 @@ def trainer(
 
 
     # Fit normalization on train set only
-    print('object and pooling')
-    ds_train = SphericalDataset(train_data, train_targets, fit_stats=True, nside=model.nside)
+    ds_train = SphericalDataset(train_data, train_targets, fit_stats=True)
     ds_val   = SphericalDataset(val_data,   val_targets,
-                                rm_mean=ds_train.rm_mean, rm_std=ds_train.rm_std, fit_stats=False, nside=model.nside)
+                                rm_mean=ds_train.rm_mean, rm_std=ds_train.rm_std, fit_stats=False)
 
-    print('on we go')
     train_loader = DataLoader(ds_train, batch_size=batch_size, shuffle=True, drop_last=False)
     val_loader   = DataLoader(ds_val,   batch_size=max(64, batch_size), shuffle=False, drop_last=False)
 
@@ -150,7 +149,7 @@ def trainer(
     #scheduler = WarmupCosine(optimizer, warmup_steps=warmup_steps, total_steps=total_steps)
     scheduler = optim.lr_scheduler.MultiStepLR(
         optimizer,
-        milestones=[300*64,600*64],  # change after N and N+M steps
+        milestones=[300,600],  # change after N and N+M steps
         gamma=0.1             # multiply by gamma each time
     )
 
@@ -270,16 +269,21 @@ import math
 from torch_geometric.nn import GraphConv, global_mean_pool, knn_graph
 from torch_scatter import scatter_add
 
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import healpy as hp
 
 # ---- Healpix pooling layer ----
 class HealpixSampler(nn.Module):
-    def __init__(self, nside, in_features=None):
+    def __init__(self, nside, in_features):
         super().__init__()
         self.nside = nside
         self.npix = hp.nside2npix(nside)
         self.in_features = in_features
 
     def forward(self, x):
+        # x: [B, N, in_features] where in_features includes theta, phi, RM
         B,  F, N= x.shape
         theta = x[:, 0, :]
         phi = x[:,  1, :]
@@ -322,9 +326,8 @@ class GraphConv(nn.Module):
 class main_net(nn.Module):
     def __init__(self, nside, input_dim=3, hidden_dim=64, output_dim=100):
         super().__init__()
-        self.nside=nside
         self.idd = idd
-        #self.sampler = HealpixSampler(nside, input_dim)
+        self.sampler = HealpixSampler(nside, input_dim)
         self.gnn1 = GraphConv(input_dim - 2, hidden_dim)
         self.gnn2 = GraphConv(hidden_dim, hidden_dim)
         self.gnn3 = GraphConv(hidden_dim, 2*hidden_dim)
@@ -360,16 +363,13 @@ class main_net(nn.Module):
                 nn.init.xavier_uniform_(m.weight)
                 nn.init.zeros_(m.bias)
 
-    def forward(self, pooled, pool=False):
+    def forward(self, x):
         # x: [B, N, 3]  (theta, phi, RM)
-        if pool:
-            print('word')
-            sampler=HealpixSampler(self.nside)
-            pooled = sampler(pooled)  # [B, npix, 1]
-        h = self.gnn1(pooled, self.adj)
-        h = self.gnn2(h, self.adj)
-        h = self.gnn3(h, self.adj)
-        h = self.gnn4(h, self.adj)
+        pooled = self.sampler(x)  # [B, npix, 1]
+        h = self.gnn1(pooled, self.adj.to(x.device))
+        h = self.gnn2(h, self.adj.to(x.device))
+        h = self.gnn3(h, self.adj.to(x.device))
+        h = self.gnn4(h, self.adj.to(x.device))
         out = self.readout(h.mean(dim=1))  # global mean pooling
         return out * self.output_scale
     def criterion(self,guess,target):

@@ -12,8 +12,8 @@ import numpy as np
 import datetime
 plot_dir = "%s/plots"%os.environ['HOME']
 
-idd = 2
-what = "Spherical Transformer"
+idd = 8
+what = "Net 7 with some tweaks"
 
 def init_weights_constant(m):
     if isinstance(m, nn.Linear):
@@ -22,21 +22,26 @@ def init_weights_constant(m):
 
 def thisnet():
 
-    model = main_net()
+    d_model = 512
+    n_heads = 16
+    n_layers = 6
+    mpl_ratio = 4
+    max_ell = 3
+    model = main_net(d_model, n_heads, n_layers)
     return model
 
 def train(model,data,parameters, validatedata, validateparams):
     epochs  = 300
-    lr = 1e-3
-    batch_size=3
+    lr = 3e-4
+    batch_size=16 #net 8
     trainer(model,data,parameters,validatedata,validateparams,epochs=epochs,lr=lr,batch_size=batch_size)
 
 def trainer(model, data,parameters, validatedata,validateparams,epochs=1, lr=1e-3, batch_size=10, test_num=0, weight_decay=None):
     optimizer = optim.AdamW( model.parameters(), lr=lr)
     from torch.optim.lr_scheduler import CyclicLR
-    scheduler = torch.optim.lr_scheduler.OneCycleLR(
-            optimizer, max_lr=1e-3, total_steps=epochs
-    )
+    #scheduler = torch.optim.lr_scheduler.OneCycleLR(
+    #        optimizer, max_lr=1e-3, total_steps=epochs
+    #)
     losses=[]
     a = torch.arange(len(data))
     N = len(data)
@@ -60,7 +65,7 @@ def trainer(model, data,parameters, validatedata,validateparams,epochs=1, lr=1e-
         loss = model.criterion(output1, param_n)
         loss.backward()
         optimizer.step()
-        scheduler.step()
+        #scheduler.step()
         tnow = time.time()
         tel = tnow-t0
         if epoch > 0: #(epoch>0 and epoch%100==0) or epoch==10:
@@ -302,9 +307,11 @@ class main_net(nn.Module):
             nn.LayerNorm(d_model),
             nn.Linear(d_model, d_model // 2),
             nn.GELU(),
-            nn.Linear(d_model // 2, out_dim)
+            nn.Linear(d_model // 2, out_dim),
+            nn.Sigmoid() #new in net 8
         )
         self.L1 = nn.L1Loss()
+        self.mse = nn.MSELoss()
 
     def forward(self, data, attn_mask=None):
         """
@@ -342,6 +349,7 @@ class main_net(nn.Module):
         #return out, attn_maps
         return out
     def criterion(self, guess, target):
-        return self.L1(guess,target)
+        #return self.L1(guess,target)
+        return self.mse(guess,target) #net 8
 
 

@@ -48,7 +48,7 @@ def thisnet():
 
 def train(model,data,parameters, validatedata, validateparams):
     epochs  = 8000
-    lr = 1e-6
+    lr = 1e-4
     batch_size=4 #net 8
     trainer(model,data,parameters,validatedata,validateparams,epochs=epochs,lr=lr,batch_size=batch_size)
 
