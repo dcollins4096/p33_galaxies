@@ -120,8 +120,9 @@ def trainer(
     set_seed()
 
     torch.set_num_threads(16)
-    model = torch.nn.DataParallel(model).to('cpu')
-    model.nside = model.module.nside
+    #model = torch.nn.DataParallel(model).to('cpu')
+    #model.nside = model.module.nside
+    #model.criterion = model.module.criterion
 
 
 
@@ -176,7 +177,7 @@ def trainer(
                 preds = model(xb)
                 if verbose:
                     print("  crit")
-                loss  = model.module.criterion(preds, yb)
+                loss  = model.criterion(preds, yb)
 
             if verbose:
                 print("  scale backward")
@@ -206,7 +207,7 @@ def trainer(
                 xb = xb.to(device)
                 yb = yb.to(device)
                 preds = model(xb)
-                vloss = model.module.criterion(preds, yb)
+                vloss = model.criterion(preds, yb)
                 vtotal += vloss.item() * xb.size(0)
             val_loss = vtotal / len(ds_val)
             val_curve.append(val_loss)
@@ -410,15 +411,17 @@ class main_net(nn.Module):
         #self.convs = nn.ModuleList([GraphConv(hidden, hidden) for _ in range(layers)])
         #self.norms = nn.ModuleList([nn.LayerNorm(hidden) for _ in range(layers)])
         self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
-        self.convs = nn.ModuleList([GraphConv(hidden,2*hidden),
-                                    GraphConv(2*hidden,4*hidden),
-                                    GraphConv(4*hidden,2*hidden),
-                                    GraphConv(2*hidden,hidden)])
-        layers = 4
-        self.norms = nn.ModuleList([nn.LayerNorm(2*hidden),
-                                    nn.LayerNorm(4*hidden),
-                                    nn.LayerNorm(2*hidden),
-                                    nn.LayerNorm(hidden)])
+        widths = [hidden, 2*hidden, 4*hidden, 2*hidden, hidden]
+        self.convs = nn.ModuleList([
+                GraphConv(widths[i], widths[i+1]) for i in range(len(widths)-1)
+        ])
+        self.norms = nn.ModuleList([nn.LayerNorm(w) for w in widths[1:]])
+        # projection layers for residual when dims differ
+        self.res_projs = nn.ModuleList([
+                (nn.Linear(widths[i], widths[i+1]) if widths[i] != widths[i+1] else nn.Identity())
+                for i in range(len(widths)-1)
+        ])
+
 
         # Readout → SH coefficients
         self.head = nn.Sequential(
@@ -464,11 +467,13 @@ class main_net(nn.Module):
 
         # Message passing
         h = x
-        for conv, ln in zip(self.convs, self.norms):
-            h_new = conv(h, edge_index)     # [B*N,H]
-            #h = ln(F.relu(h_new) + h)       # residual + norm
-            h = ln(F.relu(h_new) )       # residual + norm
+        h = x   # [B*N, widths[0]]
+        for conv, ln, proj in zip(self.convs, self.norms, self.res_projs):
+            h_new = conv(h, edge_index)             # [B*N, out_dim]
+            # residual: project previous h to out_dim then add
+            h = ln(F.relu(h_new) + proj(h))         # residual + norm + activation
             h = self.dropout(h)
+
 
         # Global mean pool per graph (sample)
         g = global_mean_pool(h, batch_vec)  # [B,H]
