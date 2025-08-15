@@ -1,6 +1,42 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os
+import healpy as hp
+
+
+def rmplot( sky, pooled,fname='ploot'):
+
+    theta, phi, rm = sky
+
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+
+    #hp.mollview(pooled,   title="Pooled RM",   unit="RM", cmap="coolwarm", fig=fig, sub=(1,2,2))
+
+    plt.clf()
+    plt.figure(figsize=(12, 5))
+
+    # Left: scatter
+    plt.subplot(1, 2, 1, projection = 'mollweide')
+    #plt.scatter(theta, phi, c=rm, s=10, cmap='coolwarm')
+    #hp.graticule()
+    #plt.title("Original points (scatter)")
+    lon = -1*(phi - np.pi)       # shift so -pi..pi
+    lat = np.pi/2 - theta   # convert colatitude -> latitude
+
+    x = 2 * np.sqrt(2) / np.pi * lon * np.cos(lat/2)
+    y = np.sqrt(2) * np.sin(lat/2)
+
+    plt.scatter(x, y, c=rm, s=10, cmap='coolwarm')
+    plt.xticks([])            # remove x tick labels
+    plt.yticks([])            # remove y tick labels
+    plt.grid(False)           # remove grid
+    plt.gca().set_facecolor('w')  # set background color like healpy
+
+    # Right: mollview using sub argument
+    hp.mollview(pooled, title="Pooled Healpix map", cmap='coolwarm', sub=(1, 2, 2))
+    plt.savefig("%s/plots/%s"%(os.environ['HOME'],fname))
+
+
 
 def plot_stream_and_rm(X,Y,Z,Bx,By,Bz,theta,phi,rm,axis='z',fname='image'):
 
