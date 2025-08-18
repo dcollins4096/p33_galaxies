@@ -18,7 +18,7 @@ import pdb
 idd = 17
 what = "16 with more internals"
 
-def thisnet():
+def thisnet(Nell):
 # create a healpix grid of nside_out
     nside_out = 8
     M = 12 * nside_out**2
@@ -30,8 +30,10 @@ def thisnet():
     B = 2
     N = 1000   # your large input
     Fe = 1
+    #Nell = 5
+    num_coeffs = Nell**2+2*Nell
 
-    model = main_net(Nside=nside_out, hidden=512, layers=6, normalize_rm=False)
+    model = main_net(Nside=nside_out, hidden=512, layers=6, normalize_rm=False, Nell=Nell)
 
     model = model.to('cuda' if torch.cuda.is_available() else 'cpu')
     for m in model.modules():
@@ -41,7 +43,7 @@ def thisnet():
     return model
 
 def train(model,data,parameters, validatedata, validateparams):
-    epochs  = 30
+    epochs  = 300
     lr = 1e-3
     batch_size=1 #net 8
     trainer(model,data,parameters,validatedata,validateparams,epochs=epochs,lr=lr,batch_size=batch_size, weight_decay=0)
@@ -335,6 +337,81 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GraphConv, global_mean_pool, knn_graph
 
+class ComplexHeadConv(nn.Module):
+    def __init__(self, hidden_dim: int, num_coeff: int):
+        super().__init__()
+        self.num_coeff = num_coeff
+
+        # Project features into sequence of length num_coeff
+        self.linear_expand = nn.Linear(hidden_dim, num_coeff)
+
+        # Conv1d to produce 2 channels (real + imag) for each coefficient
+        self.conv_out = nn.Conv1d(
+            in_channels=1, out_channels=2, kernel_size=1
+        )
+
+    def forward(self, h: torch.Tensor):
+        """
+        h: [B, H] or [B, N, H] (after pooling -> [B,H])
+        """
+        B, H = h.shape
+
+        # Expand to [B, num_coeff]
+        coeffs = self.linear_expand(h)        # [B, num_coeff]
+
+        # Add channel dim for conv: [B, 1, num_coeff]
+        coeffs = coeffs.unsqueeze(1)
+
+        # Conv1d: [B, 2, num_coeff]
+        out = self.conv_out(coeffs)
+
+        # Final output: [B, num_coeff, 2]
+        #out = out.permute(0, 2, 1)
+
+        return out
+
+def ensure_alm_conj(alm_real,alm_imag,Nell):
+    total=0
+
+    for ell in torch.arange(Nell)+1:
+        index_pm = ell+ell**2-1
+        D0 = torch.abs( alm_imag[...,index_pm])
+        total += D0
+        for em in torch.arange(1,ell+1):
+            index_pm = em+ell+ell**2-1
+            index_mm = -em+ell+ell**2-1
+            D1  = torch.abs(alm_real[...,index_mm]- (-1)**em*alm_real[...,index_pm])
+            D2  = torch.abs(alm_imag[...,index_mm]+ (-1)**em*alm_imag[...,index_pm])
+            delta = D1+D2
+            total += delta
+    return total
+
+def error_spherical(guess,target,Nell):
+    g_real = guess[:,0,:]
+    g_imag = guess[:,1,:]
+    t_real = target.real
+    t_imag = target.imag
+    check = ensure_alm_conj(t_real, t_imag, Nell)
+    if check.sum() > 1e-8:
+        print('Clm in target not proper conjugate')
+        pdb.set_trace()
+    clm_err = ensure_alm_conj(g_real, g_imag, Nell)
+    clm_err = clm_err.sum()
+    L1  = F.l1_loss(g_real, t_real)
+    L1 += F.l1_loss(t_real, t_imag)
+    print('ERR', clm_err, L1)
+
+    return clm_err + L1
+
+def error_real_imag(guess,target):
+    g_real = guess[:,0,:]
+    g_imag = guess[:,1,:]
+    t_real = target.real
+    t_imag = target.imag
+    L1  = F.l1_loss(g_real, t_real)
+    L1 += F.l1_loss(t_real, t_imag)
+    return L1
+
 def sph_to_cart(theta, phi):
     # theta: colatitude [0,pi], phi: longitude [0,2pi]
     st = torch.sin(theta)
@@ -350,7 +427,7 @@ class main_net(nn.Module):
     """
     def __init__(self,
                  Nside: int=8,
-                 num_coeffs: int=8,
+                 Nell: int=3,
                  k: int = 16,
                  hidden: int = 128,
                  layers: int = 4,
@@ -361,6 +438,10 @@ class main_net(nn.Module):
         super().__init__()
 
         self.nside=Nside
+        #num_coeffs = Nell**2+2*Nell #no monopole
+        num_coeffs = (np.arange(Nell)+1).sum()
+        self.num_coeffs = num_coeffs
+        self.Nell=Nell
         npix = hp.nside2npix(Nside)
         theta, phi = hp.pix2ang(Nside, np.arange(npix), nest=False)  # RING order
         theta = torch.tensor(theta,dtype=torch.float32)
@@ -416,11 +497,12 @@ class main_net(nn.Module):
 
 
         # Readout → SH coefficients
-        self.head = nn.Sequential(
-            nn.Linear(hidden, hidden),
-            nn.ReLU(),
-            nn.Linear(hidden, num_coeffs)
-        )
+        #self.head = nn.Sequential(
+        #    nn.Linear(hidden, hidden),
+        #    nn.ReLU(),
+        #    nn.Linear(hidden, num_coeffs)
+        #)
+        self.head = ComplexHeadConv( hidden_dim=hidden, num_coeff=num_coeffs)
 
         # Small learnable output scale to keep logits sane early on
         self.output_scale = nn.Parameter(torch.tensor(1.0))
@@ -473,9 +555,12 @@ class main_net(nn.Module):
         out = self.head(g) * self.output_scale  # [B,num_coeffs]
         return out
 
-    @staticmethod
-    def criterion(pred, target, kind="l1"):
-        if kind == "l2":
-            return F.mse_loss(pred, target)
-        return F.l1_loss(pred, target)
+    def criterion(self,guess, target, kind="l1"):
+        #err = error_spherical(guess,target,self.Nell)
+        #err = error_mag_phase(guess,target)
+        err = error_real_imag(guess,target)
+        return err
+
+
+
 
