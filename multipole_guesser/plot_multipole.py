@@ -2,43 +2,120 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 import healpy as hp
+import pdb
 
 
-def rmplot( sky, pooled,fname='ploot'):
+def rmplot( sky, pooled,clm_model=None, clm_real=None,fname='ploot'):
+    plt.close('all')
 
     theta, phi, rm = sky
-
-    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
 
     #hp.mollview(pooled,   title="Pooled RM",   unit="RM", cmap="coolwarm", fig=fig, sub=(1,2,2))
 
     plt.clf()
-    plt.figure(figsize=(12, 5))
+    plt.figure(figsize=(12, 4))
 
-    # Left: scatter
-    plt.subplot(1, 2, 1, projection = 'mollweide')
+    # Left: bscatter
+    #plt.subplot(2, 2, 1, projection = 'mollweide')
     #plt.scatter(theta, phi, c=rm, s=10, cmap='coolwarm')
     #hp.graticule()
     #plt.title("Original points (scatter)")
-    lon = -1*(phi - np.pi)       # shift so -pi..pi
-    lat = np.pi/2 - theta   # convert colatitude -> latitude
+    #lon = phi - np.pi       # shift to [-π, π], center at 0
+    lat = np.pi/2 - theta   # colatitude -> latitude
 
-    x = 2 * np.sqrt(2) / np.pi * lon * np.cos(lat/2)
-    y = np.sqrt(2) * np.sin(lat/2)
+    # Flip longitude to match healpy's east-to-west orientation
+    #lon = -lon
+    #lon = np.remainder(lon + np.pi, 2*np.pi)# - np.pi
 
-    plt.scatter(x, y, c=rm, s=10, cmap='coolwarm')
-    plt.xticks([])            # remove x tick labels
-    plt.yticks([])            # remove y tick labels
-    plt.grid(False)           # remove grid
-    plt.gca().set_facecolor('w')  # set background color like healpy
+    lon = phi
+    lon = np.pi - ( (lon + np.pi) % (2*np.pi) ) 
 
-    # Right: mollview using sub argument
-    hp.mollview(pooled, title="Pooled Healpix map", cmap='coolwarm', sub=(1, 2, 2))
+    fig = plt.figure(figsize=(12, 4))
+
+# Left: scatter in mollweide projection
+    #ax1 = fig.add_subplot(2, 2, 1, projection='mollweide')
+    ax1 = fig.add_subplot(2, 2, 1)#, projection='mollweide')
+    sc = ax1.scatter(lon, lat, c=rm, s=10, cmap='coolwarm')
+
+    ax1.set_xticklabels([])
+    ax1.set_yticklabels([])
+    ax1.grid(False)
+    ax1.set_facecolor('w')
+    ax1.set_title("Original points (scatter)")
+
+# Colorbar for only the scatter plot
+    cbar = fig.colorbar(sc, ax=ax1, orientation='horizontal', fraction=0.046, pad=0.07)
+    cbar.set_label("Rotation Measure")
+
+# Right: healpy map
+    hp.mollview(pooled, title="Pooled Healpix map",
+                cmap='coolwarm', sub=(2, 2, 2), notext=True)
+
+    plt.show()
+
+
+    plt.subplot(2,2,3)
+    plt.plot(clm_model.detach().numpy().real)
+    plt.plot(clm_real.detach().numpy().real)
+    plt.title('real')
+    plt.subplot(2,2,4)
+    plt.plot(clm_model.detach().numpy().imag)
+    plt.plot(clm_real.detach().numpy().imag)
+    plt.title('imag')
+    plt.tight_layout()
+    plt.savefig("%s/plots/%s"%(os.environ['HOME'],fname))
+
+def rmplot2d(theta2d,phi2d,pooled, sky,clm_model=None, clm_real=None,fname='ploot'):
+    plt.close('all')
+
+    theta, phi, rm = sky
+    plt.clf()
+    plt.figure(figsize=(12, 4))
+    lat = np.pi/2 - theta   # colatitude -> latitude
+    lon = phi
+    lon = np.pi - ( (lon + np.pi) % (2*np.pi) ) 
+
+    fig = plt.figure(figsize=(12, 4))
+    ax1 = fig.add_subplot(2, 2, 1)#, projection='mollweide')
+    sc = ax1.scatter(theta,phi, c=rm, s=10, cmap='coolwarm')
+
+    ax1.set_xticklabels([])
+    ax1.set_yticklabels([])
+    ax1.grid(False)
+    ax1.set_facecolor('w')
+    ax1.set_title("Original points (scatter)")
+
+# Colorbar for only the scatter plot
+    cbar = fig.colorbar(sc, ax=ax1, orientation='horizontal', fraction=0.046, pad=0.07)
+    cbar.set_label("Rotation Measure")
+
+# Right: healpy map
+    #hp.mollview(pooled, title="Pooled Healpix map",
+    #            cmap='coolwarm', sub=(2, 2, 2), notext=True)
+    plt.subplot(2,2,2)
+    plt.pcolormesh(theta2d, phi2d, pooled)
+
+    plt.show()
+
+
+    plt.subplot(2,2,3)
+    a2 = clm_model.detach().numpy().real
+    a1 = clm_real.detach().numpy().real
+    plt.plot(a1, a2)
+    plt.title('real')
+    plt.xlabel('target'); plt.ylabel('model')
+    plt.subplot(2,2,4)
+    a4=clm_model.detach().numpy().imag
+    a3=clm_real.detach().numpy().imag
+    #pdb.set_trace()
+    plt.plot(a3,a4)
+    plt.title('imag')
+    plt.xlabel('target'); plt.ylabel('model')
+    plt.tight_layout()
     plt.savefig("%s/plots/%s"%(os.environ['HOME'],fname))
 
 
-
-def plot_stream_and_rm(X,Y,Z,Bx,By,Bz,theta,phi,rm,axis='z',fname='image'):
+def plot_stream_and_rm(X,Y,Z,Bx,By,Bz,theta,phi,rm,fname='image'):
 
     fig,ax=plt.subplots(2,3,figsize=(12,8))
     ax0,ax1=ax
@@ -51,6 +128,15 @@ def plot_stream_and_rm(X,Y,Z,Bx,By,Bz,theta,phi,rm,axis='z',fname='image'):
     ax1[1].hist(rm)
     fig.savefig('%s/plots/%s'%(os.environ['HOME'],fname))
     plt.close(fig)
+    fig,ax=plt.subplots(3,3,figsize=(12,8))
+    for i in range(3):
+        Bi = [Bx,By,Bz][i]
+        for j in range(3):
+            pl=ax[i][j].imshow( np.abs(Bi).sum(axis=j))
+            fig.colorbar(pl,ax=ax[i][j])
+
+    fig.savefig('%s/plots/%s_field'%(os.environ['HOME'],fname))
+    
 
 
 

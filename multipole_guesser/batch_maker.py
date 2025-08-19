@@ -15,16 +15,20 @@ import datetime
 import torch
 
 Ntheta_phi = 5000
-Nsph = 3000
-N_ell = 2
+Nsph = 20
+N_ell = 1
 Nzones = 64
 L_max = 2
 center = np.array([Nzones//2,Nzones//2,Nzones//2])
 rho = np.ones([Nzones]*3)
-fname = 'clm_take7_N64_los5000.h5'
-
+fname = 'clm_take14_L=1.h5'
+simple_test=False
+make_plots=False
 
 N_ell_em = ((np.arange(N_ell)+1)*2+1).sum()
+ell_list=np.arange(N_ell)+1
+N_positive = (ell_list+1).sum()
+print(N_positive)
 
 RM_all=np.zeros([Nsph,Ntheta_phi])
 
@@ -38,17 +42,51 @@ t0 = time.time()
 for nnn in np.arange(Nsph):
 
 
-    this_clm = np.random.random(N_ell_em)
+    phase = np.exp(1j*np.random.random(N_ell_em)*2*np.pi)
+    amp = np.random.random(N_ell_em)
+    positive_mask = np.zeros(N_ell_em, dtype='bool')
+    this_clm = amp*phase
+    all_index = np.arange(N_ell_em)
+    if simple_test:
+        this_clm[:]=0
+        this_clm[0]=1
+        this_clm[1]=1
+        this_clm[2]=1
+        this_clm[3]=1
+        this_clm[4]=-1
+        this_clm[5]=-1
+        this_clm[6]=-1
     count=0
     Clmd = {}
 
     for ell in np.arange(N_ell)+1:
-        for em in np.arange(-ell,ell+1):
-            Clmd[ (ell,em)]=this_clm[count]
-            count+=1
+        index_pm = ell+ell**2-1
+        Clmd[(ell,0)] = this_clm[index_pm].real
+        this_clm[index_pm] = this_clm[index_pm].real
+        positive_mask[index_pm]=True
+        for em in np.arange(1,ell+1):
+            index_pm = em+ell+ell**2-1
+            index_mm = -em+ell+ell**2-1
+            conj = (-1)**em*np.conj(this_clm[index_pm])
+            Clmd[ (ell,em)]=this_clm[index_pm]
+            Clmd[ (ell,-em)]=conj
+            this_clm[index_mm]=conj
+            positive_mask[index_pm]=True
 
+    #pdb.set_trace()
     X, Y, Z, Bx, By, Bz = make_multipole.multipole_B_field(Nzones, L_max, Clmd, grid_extent=1.0)
-
+    #Bx[:,:,:]=0.3
+    #By[:,:,:]=0.3
+    #Bz[:,:,:]=0.3
+    #mask out the center, which explodes and gives blocks with huge values, and the corners, which add a funny signal.
+    lin = np.arange(Nzones) - Nzones//2
+    X, Y, Z = np.meshgrid(lin, lin, lin, indexing='ij')
+    r = np.sqrt(X**2 + Y**2 + Z**2)
+    r0 = 5.0  # mask radius (in voxel units)
+    mask = (r <= r0)+(r>Nzones//2)
+    Bx[mask]=0
+    By[mask]=0
+    Bz[mask]=0
 
     if 1:
         counter=0
@@ -58,34 +96,44 @@ for nnn in np.arange(Nsph):
             vox, lengths = voxelpuller.voxels_and_path_lengths2(center, theta, phi, Bx.shape)
             lengths *= dx
             nhat = voxelpuller.direction_from_angles(theta,phi)
-            this_rm[counter] = ((Bx[vox[:,0],vox[:,1],vox[:,2]]*nhat[0]+
+            voxline=vox[:,0],vox[:,1],vox[:,2]
+            this_rm[counter] = ((Bx[voxline]*nhat[0]+
                                  By[vox[:,0],vox[:,1],vox[:,2]]*nhat[1]+
                                  Bz[vox[:,0],vox[:,1],vox[:,2]]*nhat[2])*lengths*rho[vox[:,0],vox[:,1],vox[:,2]]).sum()
+            #this_rm[counter] = Bx[voxline].sum()
             counter+=1
 
+    if np.random.random() > 1:
+        print('plotting')
+        plot_multipole.plot_stream_and_rm(X,Y,Z,Bx,By,Bz,this_theta,this_phi,this_rm,fname='image_%04d'%nnn)
 
-    stuff={'Clm':this_clm,'Rm':this_rm, 'theta':this_theta,'phi':this_phi}
+
+    stuff={'Clm':this_clm[positive_mask],'Rm':this_rm, 'theta':this_theta,'phi':this_phi}
     if not os.path.exists(fname):
+
         # Create file and dataset with unlimited rows
         with h5py.File(fname, "w") as f:
             for setname in ['Clm','Rm','theta','phi']:
-                size = {'Clm':N_ell_em}.get(setname,Ntheta_phi)
+                dtype = {'Clm':'complex64'}.get(setname, 'float64')
+                size = {'Clm':N_positive}.get(setname,Ntheta_phi)
                 dset = f.create_dataset(
                     setname,
                     shape = (0,size),
                     maxshape=(None, size),  # allow unlimited rows
                     chunks=(1, size),       # chunking needed for resizing
-                    dtype='float64'
+                    dtype=dtype
                 )
             f['Ntheta_phi']=   Ntheta_phi 
             f['Nsph']=         Nsph 
             f['N_ell']=        N_ell 
             f['Nzones']=       Nzones 
             f['L_max']=        L_max 
+            f['N_positive']=   N_positive
 
     with h5py.File(fname, "r+") as f:
         for setname in ['Clm','Rm','theta','phi']:
-            size = {'Clm':N_ell_em}.get(setname,Ntheta_phi)
+
+            size = {'Clm':N_positive}.get(setname,Ntheta_phi)
             arr = stuff[setname]
             dset = f[setname]
             dset.resize((dset.shape[0] + 1, size))   # increase row count by 1

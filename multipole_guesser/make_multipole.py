@@ -40,6 +40,9 @@ def multipole_B_field(N, L_max, coeffs, grid_extent=1.0):
                 Phi += coeffs[(l, m)] * Ylm / (r**(l+1) + (r==0))
 
     # Real part only (physical field)
+    imag = np.abs(Phi.imag).sum()/np.abs(Phi.real).sum()
+    if imag > 1e-8:
+        print('Problematic imaginary part')
     Phi = Phi.real
 
     # Magnetic field B = -grad(Phi)
