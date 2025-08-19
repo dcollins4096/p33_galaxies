@@ -15,10 +15,10 @@ import os
 import matplotlib.pyplot as plt
 import torch.optim as optim
 import pdb
-idd = 18
-what = "Complex phase now. Only postive m.  "
+idd = 16
+what = "15 with smaller batch, no norm, bigger LR, no weight decay"
 
-def thisnet(Nell):
+def thisnet():
 # create a healpix grid of nside_out
     nside_out = 8
     M = 12 * nside_out**2
@@ -30,10 +30,8 @@ def thisnet(Nell):
     B = 2
     N = 1000   # your large input
     Fe = 1
-    #Nell = 5
-    num_coeffs = Nell**2+2*Nell
 
-    model = main_net(Nside=nside_out, hidden=1024, layers=8, normalize_rm=False, Nell=Nell)
+    model = main_net(Nside=nside_out, hidden=512, layers=6, normalize_rm=False)
 
     model = model.to('cuda' if torch.cuda.is_available() else 'cpu')
     for m in model.modules():
@@ -43,8 +41,8 @@ def thisnet(Nell):
     return model
 
 def train(model,data,parameters, validatedata, validateparams):
-    epochs  = 30
-    lr = 1e-2
+    epochs  = 900
+    lr = 1e-3
     batch_size=4 #net 8
     trainer(model,data,parameters,validatedata,validateparams,epochs=epochs,lr=lr,batch_size=batch_size, weight_decay=0)
 
@@ -122,9 +120,8 @@ def trainer(
     set_seed()
 
     torch.set_num_threads(16)
-    #model = torch.nn.DataParallel(model).to('cpu')
-    #model.nside = model.module.nside
-    #model.criterion = model.module.criterion
+    model = torch.nn.DataParallel(model).to('cpu')
+    model.nside = model.module.nside
 
 
 
@@ -146,12 +143,12 @@ def trainer(
     #scheduler = WarmupCosine(optimizer, warmup_steps=warmup_steps, total_steps=total_steps)
     scheduler = optim.lr_scheduler.MultiStepLR(
         optimizer,
-        milestones=[100,300,600],  # change after N and N+M steps
+        milestones=[300,600],  # change after N and N+M steps
         gamma=0.1             # multiply by gamma each time
     )
 
 
-    #scaler = torch.cuda.amp.GradScaler(enabled=(device=="cuda"))
+    scaler = torch.cuda.amp.GradScaler(enabled=(device=="cuda"))
 
     best_val = float("inf")
     best_state = None
@@ -179,21 +176,19 @@ def trainer(
                 preds = model(xb)
                 if verbose:
                     print("  crit")
-                loss  = model.criterion(preds, yb)
+                loss  = model.module.criterion(preds, yb)
 
             if verbose:
                 print("  scale backward")
-            #scaler.scale(loss).backward()
-            loss.backward()
-            #if grad_clip is not None:
-                #scaler.unscale_(optimizer)
-                #torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+            scaler.scale(loss).backward()
+            if grad_clip is not None:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
 
             if verbose:
                 print("  steps")
-            #scaler.step(optimizer)
-            optimizer.step()
-            #scaler.update()
+            scaler.step(optimizer)
+            scaler.update()
 
             running += loss.item() * xb.size(0)
 
@@ -211,7 +206,7 @@ def trainer(
                 xb = xb.to(device)
                 yb = yb.to(device)
                 preds = model(xb)
-                vloss = model.criterion(preds, yb)
+                vloss = model.module.criterion(preds, yb)
                 vtotal += vloss.item() * xb.size(0)
             val_loss = vtotal / len(ds_val)
             val_curve.append(val_loss)
@@ -266,6 +261,14 @@ import torch.nn.functional as F
 import math
 # PyG / scatter imports
 from torch_geometric.nn import GraphConv, global_mean_pool, knn_graph
+from torch_scatter import scatter_add
+
+import torch
+import healpy as hp
+import torch_scatter
+
+import torch
+import healpy as hp
 from torch_scatter import scatter_add
 
 class sampler1(torch.nn.Module):
@@ -339,81 +342,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GraphConv, global_mean_pool, knn_graph
 
-class ComplexHeadConv(nn.Module):
-    def __init__(self, hidden_dim: int, num_coeff: int):
-        super().__init__()
-        self.num_coeff = num_coeff
-
-        # Project features into sequence of length num_coeff
-        self.linear_expand = nn.Linear(hidden_dim, num_coeff)
-
-        # Conv1d to produce 2 channels (real + imag) for each coefficient
-        self.conv_out = nn.Conv1d(
-            in_channels=1, out_channels=2, kernel_size=1
-        )
-
-    def forward(self, h: torch.Tensor):
-        """
-        h: [B, H] or [B, N, H] (after pooling -> [B,H])
-        """
-        B, H = h.shape
-
-        # Expand to [B, num_coeff]
-        coeffs = self.linear_expand(h)        # [B, num_coeff]
-
-        # Add channel dim for conv: [B, 1, num_coeff]
-        coeffs = coeffs.unsqueeze(1)
-
-        # Conv1d: [B, 2, num_coeff]
-        out = self.conv_out(coeffs)
-
-        # Final output: [B, num_coeff, 2]
-        #out = out.permute(0, 2, 1)
-
-        return out
-
-def ensure_alm_conj(alm_real,alm_imag,Nell):
-    total=0
-
-    for ell in torch.arange(Nell)+1:
-        index_pm = ell+ell**2-1
-        D0 = torch.abs( alm_imag[...,index_pm])
-        total += D0
-        for em in torch.arange(1,ell+1):
-            index_pm = em+ell+ell**2-1
-            index_mm = -em+ell+ell**2-1
-            D1  = torch.abs(alm_real[...,index_mm]- (-1)**em*alm_real[...,index_pm])
-            D2  = torch.abs(alm_imag[...,index_mm]+ (-1)**em*alm_imag[...,index_pm])
-            delta = D1+D2
-            total += delta
-    return total
-
-def error_spherical(guess,target,Nell):
-    g_real = guess[:,0,:]
-    g_imag = guess[:,1,:]
-    t_real = target.real
-    t_imag = target.imag
-    check = ensure_alm_conj(t_real, t_imag, Nell)
-    if check.sum() > 1e-8:
-        print('Clm in target not proper conjugate')
-        pdb.set_trace()
-    clm_err = ensure_alm_conj(g_real, g_imag, Nell)
-    clm_err = clm_err.sum()
-    L1  = F.l1_loss(g_real, t_real)
-    L1 += F.l1_loss(t_real, t_imag)
-    print('ERR', clm_err, L1)
-
-    return clm_err + L1
-
-def error_real_imag(guess,target):
-    g_real = guess[:,0,:]
-    g_imag = guess[:,1,:]
-    t_real = target.real
-    t_imag = target.imag
-    L1  = F.l1_loss(g_real, t_real)
-    L1 += F.l1_loss(g_imag, t_imag)
-    return L1
-
 def sph_to_cart(theta, phi):
     # theta: colatitude [0,pi], phi: longitude [0,2pi]
     st = torch.sin(theta)
@@ -429,7 +357,7 @@ class main_net(nn.Module):
     """
     def __init__(self,
                  Nside: int=8,
-                 Nell: int=3,
+                 num_coeffs: int=8,
                  k: int = 16,
                  hidden: int = 128,
                  layers: int = 4,
@@ -440,10 +368,6 @@ class main_net(nn.Module):
         super().__init__()
 
         self.nside=Nside
-        #num_coeffs = Nell**2+2*Nell #no monopole
-        num_coeffs = (np.arange(Nell)+1).sum()
-        self.num_coeffs = num_coeffs
-        self.Nell=Nell
         npix = hp.nside2npix(Nside)
         theta, phi = hp.pix2ang(Nside, np.arange(npix), nest=False)  # RING order
         theta = torch.tensor(theta,dtype=torch.float32)
@@ -480,31 +404,19 @@ class main_net(nn.Module):
         self.normalize_rm = normalize_rm
 
         in_dim = 1 + pos_dim  # RM + (optional) pos features
-        widths = [hidden, 2*hidden, 4*hidden, 2*hidden, hidden]
-        self.input_proj =nn.Sequential(nn.Linear(in_dim, 2*hidden), nn.ReLU(), nn.Linear(2*hidden, widths[0]))
+        self.input_proj = nn.Linear(in_dim, hidden)
 
         # Stacked GraphConv with residuals + LayerNorm
-        #self.convs = nn.ModuleList([GraphConv(hidden, hidden) for _ in range(layers)])
-        #self.norms = nn.ModuleList([nn.LayerNorm(hidden) for _ in range(layers)])
+        self.convs = nn.ModuleList([GraphConv(hidden, hidden) for _ in range(layers)])
+        self.norms = nn.ModuleList([nn.LayerNorm(hidden) for _ in range(layers)])
         self.dropout = nn.Dropout(dropout) if dropout > 0 else nn.Identity()
-        self.convs = nn.ModuleList([
-                GraphConv(widths[i], widths[i+1]) for i in range(len(widths)-1)
-        ])
-        self.norms = nn.ModuleList([nn.LayerNorm(w) for w in widths[1:]])
-        # projection layers for residual when dims differ
-        self.res_projs = nn.ModuleList([
-                (nn.Linear(widths[i], widths[i+1]) if widths[i] != widths[i+1] else nn.Identity())
-                for i in range(len(widths)-1)
-        ])
-
 
         # Readout → SH coefficients
-        #self.head = nn.Sequential(
-        #    nn.Linear(hidden, hidden),
-        #    nn.ReLU(),
-        #    nn.Linear(hidden, num_coeffs)
-        #)
-        self.head = ComplexHeadConv( hidden_dim=hidden, num_coeff=num_coeffs)
+        self.head = nn.Sequential(
+            nn.Linear(hidden, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, num_coeffs)
+        )
 
         # Small learnable output scale to keep logits sane early on
         self.output_scale = nn.Parameter(torch.tensor(1.0))
@@ -543,13 +455,10 @@ class main_net(nn.Module):
 
         # Message passing
         h = x
-        h = x   # [B*N, widths[0]]
-        for conv, ln, proj in zip(self.convs, self.norms, self.res_projs):
-            h_new = conv(h, edge_index)             # [B*N, out_dim]
-            # residual: project previous h to out_dim then add
-            h = ln(F.relu(h_new) + proj(h))         # residual + norm + activation
+        for conv, ln in zip(self.convs, self.norms):
+            h_new = conv(h, edge_index)     # [B*N,H]
+            h = ln(F.relu(h_new) + h)       # residual + norm
             h = self.dropout(h)
-
 
         # Global mean pool per graph (sample)
         g = global_mean_pool(h, batch_vec)  # [B,H]
@@ -557,12 +466,9 @@ class main_net(nn.Module):
         out = self.head(g) * self.output_scale  # [B,num_coeffs]
         return out
 
-    def criterion(self,guess, target, kind="l1"):
-        #err = error_spherical(guess,target,self.Nell)
-        #err = error_mag_phase(guess,target)
-        err = error_real_imag(guess,target)
-        return err
-
-
-
+    @staticmethod
+    def criterion(pred, target, kind="l1"):
+        if kind == "l2":
+            return F.mse_loss(pred, target)
+        return F.l1_loss(pred, target)
 

@@ -15,8 +15,8 @@ import os
 import matplotlib.pyplot as plt
 import torch.optim as optim
 import pdb
-idd = 18
-what = "Complex phase now. Only postive m.  "
+idd = 19
+what = "18, but with a big MLP"
 
 def thisnet(Nell):
 # create a healpix grid of nside_out
@@ -33,7 +33,7 @@ def thisnet(Nell):
     #Nell = 5
     num_coeffs = Nell**2+2*Nell
 
-    model = main_net(Nside=nside_out, hidden=1024, layers=8, normalize_rm=False, Nell=Nell)
+    model = main_net(Nside=nside_out, hidden=512, layers=6, normalize_rm=False, Nell=Nell)
 
     model = model.to('cuda' if torch.cuda.is_available() else 'cpu')
     for m in model.modules():
@@ -43,8 +43,8 @@ def thisnet(Nell):
     return model
 
 def train(model,data,parameters, validatedata, validateparams):
-    epochs  = 30
-    lr = 1e-2
+    epochs  = 300
+    lr = 1e-3
     batch_size=4 #net 8
     trainer(model,data,parameters,validatedata,validateparams,epochs=epochs,lr=lr,batch_size=batch_size, weight_decay=0)
 
@@ -151,7 +151,7 @@ def trainer(
     )
 
 
-    #scaler = torch.cuda.amp.GradScaler(enabled=(device=="cuda"))
+    scaler = torch.cuda.amp.GradScaler(enabled=(device=="cuda"))
 
     best_val = float("inf")
     best_state = None
@@ -183,17 +183,15 @@ def trainer(
 
             if verbose:
                 print("  scale backward")
-            #scaler.scale(loss).backward()
-            loss.backward()
-            #if grad_clip is not None:
-                #scaler.unscale_(optimizer)
-                #torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+            scaler.scale(loss).backward()
+            if grad_clip is not None:
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
 
             if verbose:
                 print("  steps")
-            #scaler.step(optimizer)
-            optimizer.step()
-            #scaler.update()
+            scaler.step(optimizer)
+            scaler.update()
 
             running += loss.item() * xb.size(0)
 
@@ -371,39 +369,6 @@ class ComplexHeadConv(nn.Module):
         #out = out.permute(0, 2, 1)
 
         return out
-
-def ensure_alm_conj(alm_real,alm_imag,Nell):
-    total=0
-
-    for ell in torch.arange(Nell)+1:
-        index_pm = ell+ell**2-1
-        D0 = torch.abs( alm_imag[...,index_pm])
-        total += D0
-        for em in torch.arange(1,ell+1):
-            index_pm = em+ell+ell**2-1
-            index_mm = -em+ell+ell**2-1
-            D1  = torch.abs(alm_real[...,index_mm]- (-1)**em*alm_real[...,index_pm])
-            D2  = torch.abs(alm_imag[...,index_mm]+ (-1)**em*alm_imag[...,index_pm])
-            delta = D1+D2
-            total += delta
-    return total
-
-def error_spherical(guess,target,Nell):
-    g_real = guess[:,0,:]
-    g_imag = guess[:,1,:]
-    t_real = target.real
-    t_imag = target.imag
-    check = ensure_alm_conj(t_real, t_imag, Nell)
-    if check.sum() > 1e-8:
-        print('Clm in target not proper conjugate')
-        pdb.set_trace()
-    clm_err = ensure_alm_conj(g_real, g_imag, Nell)
-    clm_err = clm_err.sum()
-    L1  = F.l1_loss(g_real, t_real)
-    L1 += F.l1_loss(t_real, t_imag)
-    print('ERR', clm_err, L1)
-
-    return clm_err + L1
 
 def error_real_imag(guess,target):
     g_real = guess[:,0,:]
