@@ -18,20 +18,10 @@ save_model = 0
 plot_models = 1
 
 
-#sky, clm = loader.loader('clm_take6.h5',ntrain=512, nvalid=3)
-#sky, clm = loader.loader('clm_take6.h5',ntrain=4, nvalid=3)
-#sky, clm = loader.loader('clm_take7_N64_los5000.h5',ntrain=20, nvalid=3)
-#sky, clm = loader.loader('simple_tests.h5',ntrain=3, nvalid=1)
-#sky, clm = loader.loader('phase_tests.h5',ntrain=3, nvalid=1)
-#sky, clm, Nell = loader.loader('clm_take10_wtf.h5',ntrain=4, nvalid=1)
-#sky, clm, Nell = loader.loader('clm_take11_holes.h5',ntrain=4, nvalid=1)
-#sky, clm, Nell = loader.loader('clm_take12_L=1.h5',ntrain=4, nvalid=1)
-#sky, clm, Nell = loader.loader('clm_take13_L=2.h5',ntrain=4, nvalid=1)
-sky, clm, Nell = loader.loader('clm_take14_L=1.h5',ntrain=4, nvalid=1)
-
 if new_model:
-    import networks.net0022 as net
+    import networks.net0029 as net
     reload(net)
+    sky, clm, Nell = net.load_data()
     model = net.thisnet(Nell)
     model.idd = net.idd
 
