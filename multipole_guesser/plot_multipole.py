@@ -115,13 +115,24 @@ def rmplot2d(theta2d,phi2d,pooled, sky,clm_model=None, clm_real=None,fname='ploo
     plt.savefig("%s/plots/%s"%(os.environ['HOME'],fname))
 
 
-def plot_stream_and_rm(X,Y,Z,Bx,By,Bz,theta,phi,rm,fname='image'):
+def plot_stream_and_rm(X,Y,Z,Bx,By,Bz,theta,phi,rm,fname='image', clm=None):
 
     fig,ax=plt.subplots(2,3,figsize=(12,8))
     ax0,ax1=ax
     plot_B_streamlines(X, Y, Z, Bx, By, Bz, axis='x',ax_in=ax0[0])
     plot_B_streamlines(X, Y, Z, Bx, By, Bz, axis='y',ax_in=ax0[1])
     plot_B_streamlines(X, Y, Z, Bx, By, Bz, axis='z',ax_in=ax0[2])
+
+    clm_mag = []
+    clm_phase = []
+    if clm is not None:
+        for ell in np.arange(clm['N_ell'])+1:
+            for em in np.arange(-ell,ell+1):
+                clm_mag.append( np.abs(clm[(ell,em)] ) )
+                clm_phase.append( np.angle(clm[(ell,em)]))
+        ax1[2].plot(clm_mag)
+        tw = ax1[2].twinx()
+        tw.plot(clm_phase)
 
     scat=ax1[0].scatter(theta,phi,c=rm, cmap='viridis')
     fig.colorbar(scat,ax=ax1[0])

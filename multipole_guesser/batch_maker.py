@@ -15,20 +15,19 @@ import datetime
 import torch
 
 Ntheta_phi = 5000
-Nsph = 2000
-N_ell = 2
-Nzones = 64
-L_max = 2
+Nsph = 1
+N_ell = 3
+Nzones = 16
 center = np.array([Nzones//2,Nzones//2,Nzones//2])
 rho = np.ones([Nzones]*3)
-fname = 'clm_take18_L=2.h5'
+fname = 'clm_take1_L=3.h5'
+CLOBBER = True
 simple_test=False
 make_plots=False
 
 N_ell_em = ((np.arange(N_ell)+1)*2+1).sum()
 ell_list=np.arange(N_ell)+1
 N_positive = (ell_list+1).sum()
-print(N_positive)
 
 RM_all=np.zeros([Nsph,Ntheta_phi])
 
@@ -57,7 +56,7 @@ for nnn in np.arange(Nsph):
         this_clm[5]=-1
         this_clm[6]=-1
     count=0
-    Clmd = {}
+    Clmd = {"N_ell":N_ell}
 
     for ell in np.arange(N_ell)+1:
         index_pm = ell+ell**2-1
@@ -74,7 +73,7 @@ for nnn in np.arange(Nsph):
             positive_mask[index_pm]=True
 
     #pdb.set_trace()
-    X, Y, Z, Bx, By, Bz = make_multipole.multipole_B_field(Nzones, L_max, Clmd, grid_extent=1.0)
+    X, Y, Z, Bx, By, Bz = make_multipole.multipole_B_field(Nzones, N_ell, Clmd, grid_extent=1.0)
     #Bx[:,:,:]=0.3
     #By[:,:,:]=0.3
     #Bz[:,:,:]=0.3
@@ -103,13 +102,14 @@ for nnn in np.arange(Nsph):
             #this_rm[counter] = Bx[voxline].sum()
             counter+=1
 
-    if np.random.random() > 1:
-        print('plotting')
-        plot_multipole.plot_stream_and_rm(X,Y,Z,Bx,By,Bz,this_theta,this_phi,this_rm,fname='image_%04d'%nnn)
+    if np.random.random() >0:
+        plot_multipole.plot_stream_and_rm(X,Y,Z,Bx,By,Bz,this_theta,this_phi,this_rm,fname='image_Nell_%d_%04d'%(N_ell,nnn), clm=Clmd)
 
 
     stuff={'Clm':this_clm[positive_mask],'Rm':this_rm, 'theta':this_theta,'phi':this_phi}
-    if not os.path.exists(fname):
+    print('Clmd',Clmd)
+    print('Clm',stuff['Clm'])
+    if not os.path.exists(fname) or CLOBBER:
 
         # Create file and dataset with unlimited rows
         with h5py.File(fname, "w") as f:
@@ -127,7 +127,6 @@ for nnn in np.arange(Nsph):
             f['Nsph']=         Nsph 
             f['N_ell']=        N_ell 
             f['Nzones']=       Nzones 
-            f['L_max']=        L_max 
             f['N_positive']=   N_positive
 
     with h5py.File(fname, "r+") as f:
@@ -151,5 +150,5 @@ for nnn in np.arange(Nsph):
     if etab.day != now.day:
         maybe_tomorrow = " %04d-%02d-%02d "%(etab.year,etab.month,etab.day)
     eta = "%s%0.2d:%0.2d:%0.2d"%(maybe_tomorrow,etab.hour, etab.minute, int(etab.second))
-    print('SPHERE %d/%d eta %s'%(nnn,Nsph,eta))
+    print('SPHERE %d/%d eta %s Nell %d'%(nnn,Nsph,eta,N_ell))
 

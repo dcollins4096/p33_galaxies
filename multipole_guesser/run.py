@@ -19,7 +19,7 @@ plot_models = 1
 
 
 if new_model:
-    import networks.net0029 as net
+    import networks.net0033 as net
     reload(net)
     sky, clm, Nell = net.load_data()
     model = net.thisnet(Nell)
