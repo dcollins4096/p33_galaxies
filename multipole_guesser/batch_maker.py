@@ -15,13 +15,13 @@ import datetime
 import torch
 
 Ntheta_phi = 5000
-Nsph = 1
-N_ell = 4
+Nsph = 1000
+N_ell = 3
 Nzones = 16
 center = np.array([Nzones//2,Nzones//2,Nzones//2])
 rho = np.ones([Nzones]*3)
-fname = 'clm_take3_L=4.h5'
-CLOBBER = True
+fname = 'clm_take2_L=3.h5'
+CLOBBER = False
 simple_test=True
 make_plots=False
 
