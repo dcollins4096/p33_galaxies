@@ -15,21 +15,19 @@ import datetime
 import torch
 
 Ntheta_phi = 5000
-Nsph = 1000
-N_ell = 3
+Nsph = 1
+N_ell = 4
 Nzones = 16
 center = np.array([Nzones//2,Nzones//2,Nzones//2])
 rho = np.ones([Nzones]*3)
-fname = 'clm_take2_L=3.h5'
-CLOBBER = False
+fname = 'clm_take3_L=4.h5'
+CLOBBER = True
 simple_test=True
 make_plots=False
 
 N_ell_em = ((np.arange(N_ell)+1)*2+1).sum()
-ell_list=np.arange(N_ell)+2
-N_positive = (ell_list).sum()
-print(ell_list)
-pdb.set_trace()
+ell_list=np.arange(N_ell)+1
+N_positive = (ell_list+1).sum()
 
 RM_all=np.zeros([Nsph,Ntheta_phi])
 
@@ -115,7 +113,6 @@ for nnn in np.arange(Nsph):
 
     if np.random.random() >0:
         plot_multipole.plot_stream_and_rm(X,Y,Z,Bx,By,Bz,this_theta,this_phi,this_rm,fname='image_Nell_%d_%04d'%(N_ell,nnn), clm=Clmd)
-        print(this_theta[:10])
 
 
     stuff={'Clm':this_clm[positive_mask],'Rm':this_rm, 'theta':this_theta,'phi':this_phi}
