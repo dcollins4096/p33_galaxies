@@ -31,20 +31,21 @@ for nnn in pull_list:
     Clmd={'N_ell':N_ell}
 
 
-    counter=0
+    counter = 0
     for ell in np.arange(N_ell)+1:
-        Clmd[(ell,0)] = this_clm[counter]
-        counter+=1
-        for em in np.arange(1,ell+1):
-            conj = (-1)**em*np.conj(this_clm[counter])
-            Clmd[ (ell,em)]=this_clm[counter]
-            Clmd[ (ell,-em)]=conj
-            counter+=1
-    print('this_clm',this_clm)
-    print('Clmd', Clmd)
+        print('ell=======',ell)
+        for m in range(0, ell + 1):
+            print('m',m,counter)
+            c_lm = this_clm[counter]
+            if m == 0:
+                Clmd[(ell, 0)] = np.real(c_lm)          # drop tiny imag
+            else:
+                Clmd[(ell,  m)] = c_lm
+                Clmd[(ell, -m)] = ((-1)**m) * np.conj(c_lm)
+            counter += 1
+    #print('this_clm',this_clm)
+    #print('Clmd', Clmd)
     X, Y, Z, Bx, By, Bz = make_multipole.multipole_B_field(Nzones, N_ell, Clmd, grid_extent=1.0)
-    lin = np.arange(Nzones) - Nzones//2
-    X, Y, Z = np.meshgrid(lin, lin, lin, indexing='ij')
     r = np.sqrt(X**2 + Y**2 + Z**2)
     r0 = 5.0  # mask radius (in voxel units)
     mask = (r <= r0)+(r>Nzones//2)
@@ -52,3 +53,5 @@ for nnn in pull_list:
     By[mask]=0
     Bz[mask]=0
     plot_multipole.plot_stream_and_rm(X,Y,Z,Bx,By,Bz,this_theta,this_phi,this_rm,clm=Clmd,fname='reimage_N_ell_%d_%04d'%(N_ell,nnn))
+    print(this_theta[:10])
+
