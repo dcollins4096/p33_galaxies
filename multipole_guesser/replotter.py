@@ -7,7 +7,7 @@ import make_multipole
 import h5py
 import numpy as np
 
-fname = 'clm_take1_L=3.h5'
+fname = 'clm_take3_L=4.h5'
 
 pull_list = [0]
 
@@ -40,8 +40,13 @@ for nnn in pull_list:
             Clmd[ (ell,em)]=this_clm[counter]
             Clmd[ (ell,-em)]=conj
             counter+=1
-    print('this_clm',this_clm)
-    print('Clmd', Clmd)
+    #print('this_clm',this_clm)
+    #print('Clmd', Clmd)
+    if 0:
+        for ell in np.arange(N_ell)+1:
+            for em in np.arange(-ell,ell+1):
+                clm_x = Clmd[(ell,em)]
+                print("Clmd[(%d,%d)]= %0.2f + i %0.2f"%(ell,em,clm_x.real,clm_x.imag))
     X, Y, Z, Bx, By, Bz = make_multipole.multipole_B_field(Nzones, N_ell, Clmd, grid_extent=1.0)
     lin = np.arange(Nzones) - Nzones//2
     X, Y, Z = np.meshgrid(lin, lin, lin, indexing='ij')

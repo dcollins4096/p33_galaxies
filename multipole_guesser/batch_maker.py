@@ -16,13 +16,13 @@ import torch
 
 Ntheta_phi = 5000
 Nsph = 1
-N_ell = 3
+N_ell = 4
 Nzones = 16
 center = np.array([Nzones//2,Nzones//2,Nzones//2])
 rho = np.ones([Nzones]*3)
-fname = 'clm_take1_L=3.h5'
+fname = 'clm_take3_L=4.h5'
 CLOBBER = True
-simple_test=False
+simple_test=True
 make_plots=False
 
 N_ell_em = ((np.arange(N_ell)+1)*2+1).sum()
@@ -47,14 +47,16 @@ for nnn in np.arange(Nsph):
     this_clm = amp*phase
     all_index = np.arange(N_ell_em)
     if simple_test:
-        this_clm[:]=0
-        this_clm[0]=1
-        this_clm[1]=1
-        this_clm[2]=1
-        this_clm[3]=1
-        this_clm[4]=-1
-        this_clm[5]=-1
-        this_clm[6]=-1
+        #this_clm[:]=0
+        this_clm[0]=-1 #m-1
+        #this_clm[1]=1. #m0
+        #this_clm[2]=1. #m1
+        #this_clm[3]=0. #m-2
+        #this_clm[4]=0. #m-1
+        #this_clm[5]=0. #m0
+        #this_clm[6]=0. #m1
+        #this_clm[7]=0. #m2
+        #this_clm[8]=0.
     count=0
     Clmd = {"N_ell":N_ell}
 
@@ -71,9 +73,16 @@ for nnn in np.arange(Nsph):
             Clmd[ (ell,-em)]=conj
             this_clm[index_mm]=conj
             positive_mask[index_pm]=True
+    if 0:
+        for ell in np.arange(N_ell)+1:
+            for em in np.arange(-ell,ell+1):
+                clm_x = Clmd[(ell,em)]
+                print("Clmd[(%d,%d)]= %0.2f + i %0.2f"%(ell,em,clm_x.real,clm_x.imag))
 
     #pdb.set_trace()
+
     X, Y, Z, Bx, By, Bz = make_multipole.multipole_B_field(Nzones, N_ell, Clmd, grid_extent=1.0)
+
     #Bx[:,:,:]=0.3
     #By[:,:,:]=0.3
     #Bz[:,:,:]=0.3
@@ -107,8 +116,8 @@ for nnn in np.arange(Nsph):
 
 
     stuff={'Clm':this_clm[positive_mask],'Rm':this_rm, 'theta':this_theta,'phi':this_phi}
-    print('Clmd',Clmd)
-    print('Clm',stuff['Clm'])
+    #print('Clmd',Clmd)
+    #print('Clm',stuff['Clm'])
     if not os.path.exists(fname) or CLOBBER:
 
         # Create file and dataset with unlimited rows
