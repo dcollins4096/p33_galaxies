@@ -27,25 +27,12 @@ ntrain = 4
 nvalid=4
 def load_data():
 
-    #sky, clm = loader.loader('clm_take6.h5',ntrain=512, nvalid=3)
-    #sky, clm = loader.loader('clm_take6.h5',ntrain=4, nvalid=3)
-    #sky, clm = loader.loader('clm_take7_N64_los5000.h5',ntrain=20, nvalid=3)
-    #sky, clm = loader.loader('simple_tests.h5',ntrain=3, nvalid=1)
-    #sky, clm = loader.loader('phase_tests.h5',ntrain=3, nvalid=1)
-    #sky, clm, Nell = loader.loader('clm_take10_wtf.h5',ntrain=4, nvalid=1)
-    #sky, clm, Nell = loader.loader('clm_take11_holes.h5',ntrain=4, nvalid=1)
-    #sky, clm, Nell = loader.loader('clm_take12_L=1.h5',ntrain=4, nvalid=1)
-    #sky, clm, Nell = loader.loader('clm_take13_L=2.h5',ntrain=4, nvalid=1)
-    #sky, clm, Nell = loader.loader('clm_take14_L=1.h5',ntrain=4, nvalid=1)
-    #sky, clm, Nell = loader.loader('clm_take15_L=2.h5',ntrain=20, nvalid=1)
-    #fname = 'clm_take16_L=8.h5'
-    #fname = 'clm_take15_L=2.h5'
     sky, clm, Nell = loader.loader(fname,ntrain=ntrain, nvalid=1)
     return sky, clm, Nell
 
 def thisnet(Nell):
 
-    model = main_net(Nell, hidden_channels=1024, num_encodings=16, fc_layers=[256,256])
+    model = main_net(Nell, hidden_channels=1024, num_encodings=16, fc_layers=[1024,512,256])
 
     model = model.to('cuda' if torch.cuda.is_available() else 'cpu')
     model.ntheta = 32
