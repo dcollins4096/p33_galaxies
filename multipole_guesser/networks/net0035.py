@@ -18,13 +18,13 @@ import pdb
 import loader
 
 idd = 35
-what = "3d conv.  L=4. New dataset, can learn!"
+what = "3d conv.  L=4. New dataset, can learn! 64 had trouble"
 
 #fname = "clm_take3_L=4.h5"
 fname = 'clm_take4_L=4_64.h5'
 #ntrain = 600
-#ntrain = 4
-ntrain = 20
+ntrain = 4
+#ntrain = 20
 #ntrain = 600
 #nvalid=3
 nvalid=4
@@ -48,10 +48,10 @@ def thisnet(Nell):
     return model
 
 def train(model,data,parameters, validatedata, validateparams):
-    epochs  = 45
+    epochs  = 150
     #lr = 1e-3
     #lr = 1e-4
-    lr = 1e-3
+    lr = 1e-4
     batch_size=10 
     lr_schedule=[900]
     trainer(model,data,parameters,validatedata,validateparams,epochs=epochs,lr=lr,batch_size=batch_size, weight_decay=0, lr_schedule=lr_schedule)
@@ -86,6 +86,7 @@ class SphericalDataset(Dataset):
         theta = self.data[:,0,:]
         phi = self.data[:,1,:]
         rm  = self.data[:,2,:]
+        rm = rm_scaled
 
         self.rm_mean = rm_mean
         self.rm_std  = rm_std
