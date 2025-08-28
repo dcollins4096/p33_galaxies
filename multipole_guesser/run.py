@@ -19,7 +19,7 @@ plot_models = 1
 
 
 if new_model:
-    import networks.net0033 as net
+    import networks.net0035 as net
     reload(net)
     sky, clm, Nell = net.load_data()
     model = net.thisnet(Nell)
@@ -47,6 +47,7 @@ if train_model:
 
 
 if plot_models:
+    net.plot_loss_curve(model)
     if hasattr(net,'sampler2d'):
         size_args = {'ntheta':32, 'nphi':32}
     else:
@@ -55,52 +56,46 @@ if plot_models:
     ds_val   = net.SphericalDataset(sky['valid'], clm['valid'], rm_mean=ds_train.rm_mean, rm_std=ds_train.rm_std, fit_stats=False, **size_args)
     ds_tst   = net.SphericalDataset(sky['test'], clm['test'], rm_mean=ds_train.rm_mean, rm_std=ds_train.rm_std, fit_stats=False, **size_args)
     print('ploot')
-    err=[]
     delta = []
-    fig,ax=plt.subplots(1,3, figsize=(12,4))
-    subset = 'train'
-    mmin=20
-    mmax=-20
-    for n in range(len(sky[subset])):
-        rm, this_clm = ds_train[n]
-        if 1:
-            moo = model(rm.unsqueeze(0))
-            err.append( model.criterion(moo,this_clm.unsqueeze(0)))
-            #delta = torch.abs( 1-moo/this_clm).detach().numpy()[0]
-            #ax[1].plot(delta, marker='*')
-            c1, m1 =  this_clm.detach().numpy(),moo[0].detach().numpy()
-            args = np.argsort(np.abs(c1.real))
-            ax[1].plot(c1.real[args],m1.real[args])
-            ax[1].set(title='real')
-            args = np.argsort(np.abs(c1.imag))
-            ax[2].plot(c1.imag[args],m1.imag[args])
-            ax[2].set(title='imag')
-            mmin = min([c1.imag.min(), m1.imag.min(), c1.real.min(), m1.real.min()])
-            mmax = max([c1.imag.max(), m1.imag.max(), c1.real.max(), m1.real.max()])
-        if 0:
-            moo = model(rm.unsqueeze(0))
-            err.append( model.criterion(moo,this_clm.unsqueeze(0)))
-            delta = torch.abs( 1-moo/this_clm).detach().numpy()[0]
-            ax[1].plot(delta, marker='*')
-            c1, m1 =  this_clm.detach().numpy(),moo[0].detach().numpy()
-            args = np.argsort(c1)
-            ax[2].plot(c1[args],m1[args])
+    for subset in ['train','valid','test']:#,'test']:
+        fig,ax=plt.subplots(1,3, figsize=(12,4))
+        err={'train':[],'valid':[],'test':[]}
+        mmin=20
+        mmax=-20
+        for n in range(len(sky[subset])):
+            rm, this_clm = {'train':ds_train, 'valid':ds_val, 'test':ds_tst}[subset][n]
+            if 1:
+                moo = model(rm.unsqueeze(0))
+                err[subset].append( model.criterion(moo,this_clm.unsqueeze(0)))
+                #delta = torch.abs( 1-moo/this_clm).detach().numpy()[0]
+                #ax[1].plot(delta, marker='*')
+                c1, m1 =  this_clm.detach().numpy(),moo[0].detach().numpy()
+                args = np.argsort(np.abs(c1.real))
+                ax[1].plot(c1.real[args],m1.real[args])
+                ax[1].set(title='real')
+                args = np.argsort(np.abs(c1.imag))
+                ax[2].plot(c1.imag[args],m1.imag[args])
+                ax[2].set(title='imag')
+                mmin = min([c1.imag.min(), m1.imag.min(), c1.real.min(), m1.real.min()])
+                mmax = max([c1.imag.max(), m1.imag.max(), c1.real.max(), m1.real.max()])
 
-        #plot_multipole.rmplot( sky[subset][n], rm, clm_model = moo, clm_real = clm, fname = "rm_and_sampled_%04d"%n)
-        if 0:
-            plot_multipole.rmplot2d(rm[0], rm[1], rm[2], sky[subset][n], clm_model = moo[0], clm_real = this_clm, fname = "rm_and_sampled_%04d"%n)
+            #plot_multipole.rmplot( sky[subset][n], rm, clm_model = moo, clm_real = clm, fname = "rm_and_sampled_%04d"%n)
+            if 0:
+                plot_multipole.rmplot2d(rm[0], rm[1], rm[2], sky[subset][n], clm_model = moo[0], clm_real = this_clm, fname = "rm_and_sampled_%04d"%n)
 
 
-    err = torch.tensor(err).detach().numpy()
-    ax[1].plot([mmin,mmax],[mmin,mmax],c='k')
-    ax[2].plot([mmin,mmax],[mmin,mmax],c='k')
-    ax[0].hist(err)
-    ax[0].set(xlabel='Err', ylabel='P(err)')
-    ax[1].set(title="Clm real",xlabel='actual',ylabel='guess')
-    ax[2].set(title="Clm imag",xlabel='actual',ylabel='guess')
-    fig.tight_layout()
-    oname = '%s/plots/errhist_%d'%(os.environ['HOME'],model.idd)
-    print(oname)
-    fig.savefig(oname)
+        #err = torch.tensor(err).detach().numpy()
+        ax[1].plot([mmin,mmax],[mmin,mmax],c='k')
+        ax[2].plot([mmin,mmax],[mmin,mmax],c='k')
+        eee = torch.tensor(err[subset]).detach().numpy().flatten()
+        ax[0].hist(eee)
+        ax[0].set(xlabel='Err', ylabel='P(err)')
+        ax[1].set(title="Clm real",xlabel='actual',ylabel='guess')
+        ax[2].set(title="Clm imag",xlabel='actual',ylabel='guess')
+        fig.tight_layout()
+        oname = '%s/plots/errhist_%d_%s'%(os.environ['HOME'],model.idd,subset)
+        print(oname)
+        plt.close(fig)
+        fig.savefig(oname)
 
 
